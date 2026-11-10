@@ -1,0 +1,57 @@
+{% extends "base.html" %}
+{% block title %}Issues{% endblock %}
+{% block content %}
+<h2>Issues</h2>
+<form method="get" class="filters">
+  <label>Bucket
+    <select name="bucket">
+      <option value="">All</option>
+      {% for value, label in buckets %}<option value="{{ value }}" {% if selected.bucket == value %}selected{% endif %}>{{ label }}</option>{% endfor %}
+    </select>
+  </label>
+  <label>Room
+    <select name="room">
+      <option value="">All</option>
+      {% for room in rooms %}<option value="{{ room.id }}" {% if selected.room == room.id %}selected{% endif %}>{{ room.number }}</option>{% endfor %}
+    </select>
+  </label>
+  <label>Room type
+    <select name="room_type">
+      <option value="">All</option>
+      {% for room_type in room_types %}<option value="{{ room_type.id }}" {% if selected.room_type == room_type.id %}selected{% endif %}>{{ room_type.name }}</option>{% endfor %}
+    </select>
+  </label>
+  <label>Status
+    <select name="status">
+      <option value="">All</option>
+      {% for value, label in statuses %}<option value="{{ value }}" {% if selected.status == value %}selected{% endif %}>{{ label }}</option>{% endfor %}
+    </select>
+  </label>
+  <label>Cycle
+    <select name="cycle">
+      <option value="">All</option>
+      {% for year in cycles %}<option value="{{ year }}" {% if selected.cycle == year %}selected{% endif %}>{{ year }}</option>{% endfor %}
+    </select>
+  </label>
+  <button type="submit">Filter</button>
+</form>
+
+<p style="margin-top:1rem">
+  <strong>{{ issues|length }} issue{{ issues|length|pluralize }}</strong> ·
+  <a href="{% url 'issue_export' %}{% if query %}?{{ query }}{% endif %}">Export this view to CSV</a>
+  {% if query %} · <a href="{% url 'issue_list' %}">Clear filters</a>{% endif %}
+</p>
+
+{% if issues %}
+<table>
+  <thead>
+    <tr><th>Room</th><th>Item</th><th>Bucket</th><th>Priority</th><th>Status</th><th class="num">Cost estimate</th><th></th></tr>
+  </thead>
+  <tbody>
+    {% for issue in issues %}{% include "audits/_issue_row.html" %}{% endfor %}
+  </tbody>
+</table>
+{% else %}
+<p>No issues match.</p>
+{% endif %}
+{% endblock %}

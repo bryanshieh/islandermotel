@@ -1,6 +1,8 @@
+import csv
+
 from django.contrib import messages
 from django.contrib.auth.decorators import login_required
-from django.http import Http404, HttpResponseBadRequest
+from django.http import Http404, HttpResponse, HttpResponseBadRequest
 from django.shortcuts import get_object_or_404, redirect, render
 from django.urls import reverse
 from django.utils import timezone
@@ -8,7 +10,7 @@ from django.views.decorators.http import require_POST
 
 from . import checklist
 from .ac import ac_result, reading, set_reading
-from .forms import DecorForm, NewAuditForm, StartForm, WrapUpForm
+from .forms import DecorForm, IssueForm, NewAuditForm, StartForm, WrapUpForm
 from .models import (
     AC_END_LABEL,
     AC_START_LABEL,
@@ -16,10 +18,15 @@ from .models import (
     Audit,
     Furnishing,
     FurnishingCategory,
+    Issue,
+    IssueBucket,
+    IssueStatus,
     OTHER,
     RESULT_OPTIONS,
     Room,
+    RoomType,
     Zone,
+    room_sort_key,
 )
 
 STEPS = [
@@ -266,9 +273,147 @@ def add_decor(request, pk):
     return redirect(reverse("audit_step", args=[audit.pk, "bedroom"]) + "#decor")
 
 
+def to_int(value):
+    try:
+        return int(value)
+    except (TypeError, ValueError):
+        return None
+
+
+def filtered_issues(params):
+    """Issues matching the list filters, sorted by room number."""
+    issues = Issue.objects.filter(room__is_storage=False).select_related(
+        "room", "room__room_type", "finding", "finding__audit"
+    )
+    selected = {
+        "bucket": params.get("bucket", "") if params.get("bucket") in IssueBucket.values else "",
+        "status": params.get("status", "") if params.get("status") in IssueStatus.values else "",
+        "room": to_int(params.get("room")),
+        "room_type": to_int(params.get("room_type")),
+        "cycle": to_int(params.get("cycle")),
+    }
+    if selected["bucket"]:
+        issues = issues.filter(bucket=selected["bucket"])
+    if selected["status"]:
+        issues = issues.filter(status=selected["status"])
+    if selected["room"]:
+        issues = issues.filter(room_id=selected["room"])
+    if selected["room_type"]:
+        issues = issues.filter(room__room_type_id=selected["room_type"])
+    if selected["cycle"]:
+        issues = issues.filter(finding__audit__cycle_year=selected["cycle"])
+    issues = sorted(issues, key=lambda issue: (room_sort_key(issue.room.number), issue.id))
+    return issues, selected
+
+
+def cycle_years():
+    return sorted(set(Audit.objects.values_list("cycle_year", flat=True)), reverse=True)
+
+
 @login_required
 def issue_list(request):
-    return render(request, "audits/placeholder.html", {"heading": "Issues"})
+    issues, selected = filtered_issues(request.GET)
+    rooms = sorted(
+        Room.objects.filter(is_storage=False), key=lambda room: room_sort_key(room.number)
+    )
+    return render(
+        request,
+        "audits/issue_list.html",
+        {
+            "issues": issues,
+            "selected": selected,
+            "buckets": IssueBucket.choices,
+            "statuses": IssueStatus.choices,
+            "rooms": rooms,
+            "room_types": RoomType.objects.all(),
+            "cycles": cycle_years(),
+            "query": request.GET.urlencode(),
+        },
+    )
+
+
+@login_required
+def issue_export(request):
+    """CSV of the current filtered view."""
+    issues, _ = filtered_issues(request.GET)
+    response = HttpResponse(content_type="text/csv; charset=utf-8")
+    response["Content-Disposition"] = (
+        f'attachment; filename="islander-issues-{timezone.localdate():%Y-%m-%d}.csv"'
+    )
+    writer = csv.writer(response)
+    writer.writerow(
+        [
+            "Room",
+            "Room type",
+            "Item",
+            "Bucket",
+            "Priority",
+            "Status",
+            "Cost estimate",
+            "Cycle",
+            "Date opened",
+            "Date resolved",
+            "Resolution notes",
+            "Finding notes",
+        ]
+    )
+    for issue in issues:
+        writer.writerow(
+            [
+                issue.room.number,
+                issue.room.room_type or "",
+                issue.title,
+                issue.get_bucket_display(),
+                issue.get_priority_display(),
+                issue.get_status_display(),
+                issue.cost_estimate if issue.cost_estimate is not None else "",
+                issue.finding.audit.cycle,
+                issue.date_opened.isoformat(),
+                issue.date_resolved.isoformat() if issue.date_resolved else "",
+                issue.resolution_notes,
+                issue.finding.notes,
+            ]
+        )
+    return response
+
+
+@login_required
+@require_POST
+def issue_status(request, pk):
+    """Change an issue's status from the list; returns the table row."""
+    issue = get_object_or_404(Issue, pk=pk)
+    status = request.POST.get("status")
+    if status not in IssueStatus.values:
+        return HttpResponseBadRequest("Unknown status")
+    issue.status = status
+    if status == IssueStatus.DONE and issue.date_resolved is None:
+        issue.date_resolved = timezone.localdate()
+    issue.save()
+    return render(
+        request,
+        "audits/_issue_row.html",
+        {"issue": issue, "statuses": IssueStatus.choices, "query": request.POST.get("query", "")},
+    )
+
+
+@login_required
+def issue_edit(request, pk):
+    issue = get_object_or_404(
+        Issue.objects.select_related("room", "finding", "finding__audit"), pk=pk
+    )
+    back = reverse("issue_list")
+    query = request.GET.get("back", "")
+    if query:
+        back = f"{back}?{query}"
+    form = IssueForm(request.POST or None, instance=issue)
+    if request.method == "POST" and form.is_valid():
+        issue = form.save(commit=False)
+        if issue.status == IssueStatus.DONE and issue.date_resolved is None:
+            issue.date_resolved = timezone.localdate()
+        issue.save()
+        messages.success(request, f"Saved issue: {issue.title}")
+        return redirect(back)
+    return render(request, "audits/issue_edit.html", {"issue": issue, "form": form, "back": back})
 
 
 @login_required
