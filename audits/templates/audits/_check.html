@@ -23,7 +23,7 @@
     {% if row.result == "other" %}
       <input type="text" name="result_other" maxlength="200" value="{{ finding.result_other }}"
              placeholder="Describe what you found" aria-label="Other result"
-             hx-post="{{ update_url }}" hx-trigger="change" hx-swap="none"
+             hx-post="{{ update_url }}" hx-trigger="change, keyup changed delay:800ms" hx-swap="none"
              hx-vals='{"key": "{{ row.key }}"}'
              hx-on::after-request="this.nextElementSibling.textContent = event.detail.successful ? 'Saved' : 'Not saved, try again'">
       <span class="saved-note"></span>
@@ -48,7 +48,7 @@
     <details class="details-box" {% if finding.is_problem or finding.notes or finding.photo %}open{% endif %}>
       <summary>Photo and note (optional)</summary>
       <textarea name="notes" rows="2" placeholder="Note" aria-label="Note"
-                hx-post="{{ update_url }}" hx-trigger="change" hx-swap="none"
+                hx-post="{{ update_url }}" hx-trigger="change, keyup changed delay:800ms" hx-swap="none"
                 hx-vals='{"key": "{{ row.key }}"}'
                 hx-on::after-request="this.nextElementSibling.textContent = event.detail.successful ? 'Note saved' : 'Not saved, try again'">{{ finding.notes }}</textarea>
       <span class="saved-note"></span>

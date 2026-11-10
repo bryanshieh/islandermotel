@@ -120,3 +120,71 @@ class IssueListTests(OutputTestCase):
             (issue.status, issue.priority, issue.cost_estimate, issue.resolution_notes),
             ("scheduled", "safety", Decimal("450.00"), "Vendor booked"),
         )
+
+
+class DashboardTests(OutputTestCase):
+    def test_defaults_to_the_latest_cycle(self):
+        context = self.client.get("/dashboard/").context
+        self.assertEqual(context["year"], 2026)
+        self.assertEqual(context["years"], [2026, 2025])
+        self.assertEqual(self.client.get("/dashboard/?cycle=1999").context["year"], 2026)
+
+    def test_counts_by_bucket_and_room_type_are_absolute_numbers(self):
+        response = self.client.get("/dashboard/")
+        context = response.context
+        self.assertEqual(
+            [(value, count) for value, _, count in context["bucket_rows"]],
+            [("fix_now", 1), ("work_order", 1), ("capex", 2)],
+        )
+        self.assertEqual(
+            {rt.name: count for rt, count in context["type_rows"]},
+            {"SML": 1, "STD": 2, "LRG": 0, "XLRG": 1},
+        )
+        self.assertEqual(context["issue_total"], 4)
+        self.assertNotContains(response, "%")
+
+    def test_totals_match_the_issue_list(self):
+        context = self.client.get("/dashboard/").context
+        listed = self.client.get("/issues/?cycle=2026").context["issues"]
+        self.assertEqual(context["issue_total"], len(listed))
+        for value, _, count in context["bucket_rows"]:
+            rows = self.client.get(f"/issues/?cycle=2026&bucket={value}").context["issues"]
+            self.assertEqual(count, len(rows))
+        for room_type, count in context["type_rows"]:
+            rows = self.client.get(f"/issues/?cycle=2026&room_type={room_type.id}").context["issues"]
+            self.assertEqual(count, len(rows))
+
+    def test_cycle_selector_switches_year(self):
+        context = self.client.get("/dashboard/?cycle=2025").context
+        self.assertEqual(context["year"], 2025)
+        self.assertEqual(context["issue_total"], 1)
+        self.assertEqual([row["room"].number for row in context["ac_rows"]], ["7"])
+
+    def test_ac_results_per_room(self):
+        context = self.client.get("/dashboard/").context
+        rows = {row["room"].number: row["ac"] for row in context["ac_rows"]}
+        self.assertEqual(list(rows), ["7", "9", "101"])
+        self.assertEqual(
+            (rows["101"].start_value, rows["101"].end_value, rows["101"].elapsed_minutes, rows["101"].drop),
+            (Decimal("78.0"), Decimal("55.0"), 9.0, Decimal("23.0")),
+        )
+        self.assertEqual({n: r.status for n, r in rows.items()}, {"101": "pass", "7": "fail", "9": "incomplete"})
+        self.assertEqual(
+            (context["ac_pass"], context["ac_fail"], context["ac_incomplete"]), (1, 1, 1)
+        )
+
+    def test_storage_is_excluded(self):
+        storage = Room.objects.get(is_storage=True)
+        audit = Audit.objects.create(room=storage, cycle_year=2026)
+        Finding.objects.create(
+            audit=audit, target_kind=ItemKind.FURNISHING, check_type=CheckType.CONDITION,
+            result="damaged", action_bucket="capex",
+        )
+        context = self.client.get("/dashboard/").context
+        self.assertEqual(context["issue_total"], 4)
+        self.assertNotIn("00", [row["room"].number for row in context["ac_rows"]])
+        self.assertEqual(len(self.client.get("/issues/").context["issues"]), 5)
+
+    def test_empty_dashboard(self):
+        Audit.objects.all().delete()
+        self.assertContains(self.client.get("/dashboard/"), "No audits yet")

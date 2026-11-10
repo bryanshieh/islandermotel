@@ -1,4 +1,5 @@
 import csv
+from collections import Counter
 
 from django.contrib import messages
 from django.contrib.auth.decorators import login_required
@@ -418,4 +419,46 @@ def issue_edit(request, pk):
 
 @login_required
 def dashboard(request):
-    return render(request, "audits/placeholder.html", {"heading": "Dashboard"})
+    """Totals for one audit cycle. Storage is excluded from every count."""
+    years = cycle_years()
+    year = to_int(request.GET.get("cycle"))
+    if year not in years:
+        year = years[0] if years else None
+
+    issues = Issue.objects.filter(room__is_storage=False, finding__audit__cycle_year=year)
+    by_bucket = Counter(issues.values_list("bucket", flat=True))
+    by_type = Counter(issues.values_list("room__room_type_id", flat=True))
+    bucket_rows = [(value, label, by_bucket[value]) for value, label in IssueBucket.choices]
+    type_rows = [(rt, by_type[rt.id]) for rt in RoomType.objects.all()]
+
+    # A/C result per room, from each room's most recent audit in the cycle.
+    latest = {}
+    audits = (
+        Audit.objects.filter(cycle_year=year, room__is_storage=False)
+        .select_related("room", "room__room_type")
+        .prefetch_related("findings")
+        .order_by("audit_date", "id")
+    )
+    for audit in audits:
+        latest[audit.room_id] = audit
+    ac_rows = sorted(
+        ({"room": audit.room, "audit": audit, "ac": ac_result(audit)} for audit in latest.values()),
+        key=lambda row: room_sort_key(row["room"].number),
+    )
+    ac_counts = Counter(row["ac"].status for row in ac_rows)
+
+    return render(
+        request,
+        "audits/dashboard.html",
+        {
+            "years": years,
+            "year": year,
+            "issue_total": sum(by_bucket.values()),
+            "bucket_rows": bucket_rows,
+            "type_rows": type_rows,
+            "ac_rows": ac_rows,
+            "ac_pass": ac_counts["pass"],
+            "ac_fail": ac_counts["fail"],
+            "ac_incomplete": ac_counts["incomplete"],
+        },
+    )

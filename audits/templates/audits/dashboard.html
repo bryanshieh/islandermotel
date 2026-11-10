@@ -1,0 +1,69 @@
+{% extends "base.html" %}
+{% block title %}Dashboard{% endblock %}
+{% block content %}
+<h2>Summary dashboard</h2>
+{% if not years %}
+  <p>No audits yet. The dashboard fills in once the first audit is started.</p>
+{% else %}
+<form method="get" style="max-width:16rem">
+  <label>Audit cycle
+    <select name="cycle" onchange="this.form.submit()">
+      {% for y in years %}<option value="{{ y }}" {% if y == year %}selected{% endif %}>{{ y }}</option>{% endfor %}
+    </select>
+  </label>
+  <noscript><button type="submit">Show</button></noscript>
+</form>
+
+<div class="grid">
+  <article>
+    <h4>Issues by bucket</h4>
+    <table>
+      <tbody>
+        {% for value, label, count in bucket_rows %}
+          <tr><td><a href="{% url 'issue_list' %}?cycle={{ year }}&bucket={{ value }}">{{ label }}</a></td><td class="num">{{ count }}</td></tr>
+        {% endfor %}
+      </tbody>
+      <tfoot><tr><th><a href="{% url 'issue_list' %}?cycle={{ year }}">Total</a></th><th class="num">{{ issue_total }}</th></tr></tfoot>
+    </table>
+  </article>
+  <article>
+    <h4>Issues by room type</h4>
+    <table>
+      <tbody>
+        {% for room_type, count in type_rows %}
+          <tr><td><a href="{% url 'issue_list' %}?cycle={{ year }}&room_type={{ room_type.id }}">{{ room_type.name }}</a></td><td class="num">{{ count }}</td></tr>
+        {% endfor %}
+      </tbody>
+      <tfoot><tr><th>Total</th><th class="num">{{ issue_total }}</th></tr></tfoot>
+    </table>
+  </article>
+</div>
+<p><small>Counts include issues of every status opened by {{ year }} audits. Storage is excluded.</small></p>
+
+<h3>A/C test results</h3>
+<p>Passed: <strong>{{ ac_pass }}</strong> · Failed: <strong>{{ ac_fail }}</strong> · Incomplete: <strong>{{ ac_incomplete }}</strong>
+   <small>(target: at least 20°F drop within 10 minutes)</small></p>
+{% if ac_rows %}
+<table>
+  <thead>
+    <tr><th>Room</th><th>Type</th><th class="num">Start (°F)</th><th class="num">End (°F)</th><th class="num">Elapsed (min)</th><th class="num">Drop (°F)</th><th>Result</th></tr>
+  </thead>
+  <tbody>
+    {% for row in ac_rows %}
+    <tr>
+      <td><a href="{% url 'audit_step' row.audit.pk 'wrapup' %}">{{ row.room.number }}</a></td>
+      <td>{{ row.room.room_type }}</td>
+      <td class="num">{{ row.ac.start_value|default_if_none:"–" }}</td>
+      <td class="num">{{ row.ac.end_value|default_if_none:"–" }}</td>
+      <td class="num">{% if row.ac.complete %}{{ row.ac.elapsed_minutes }}{% else %}–{% endif %}</td>
+      <td class="num">{% if row.ac.complete %}{{ row.ac.drop }}{% else %}–{% endif %}</td>
+      <td><span class="tag {{ row.ac.status }}">{{ row.ac.status|capfirst }}</span></td>
+    </tr>
+    {% endfor %}
+  </tbody>
+</table>
+{% else %}
+<p>No rooms audited in this cycle.</p>
+{% endif %}
+{% endif %}
+{% endblock %}
