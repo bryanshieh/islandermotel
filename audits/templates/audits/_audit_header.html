@@ -1,0 +1,12 @@
+<hgroup>
+  <h2>Room {{ room.number }} <small>({{ room.room_type }}, floor {{ room.floor }})</small></h2>
+  <p>{{ audit.cycle }} audit, {{ audit.audit_date|date:"M j, Y" }}{% if audit.is_finished %} · finished{% endif %}. Every tap is saved as you go.</p>
+</hgroup>
+<nav class="steps">
+  {% for step in nav %}
+    <a role="button" href="{% url 'audit_step' audit.pk step.slug %}"
+       class="{% if not step.current %}outline{% endif %}">
+      {{ step.label }}{% if step.unanswered %} · {{ step.unanswered }} unanswered{% endif %}
+    </a>
+  {% endfor %}
+</nav>

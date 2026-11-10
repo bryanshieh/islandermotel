@@ -1,0 +1,32 @@
+{% extends "base.html" %}
+{% block title %}Room {{ room.number }}: {{ zone.label }}{% endblock %}
+{% block content %}
+{% include "audits/_audit_header.html" %}
+<h3>{{ zone.label }}</h3>
+{% for entry in entries %}
+  <div class="item">
+    <h4>{{ entry.label }}{% if entry.absent %} <span class="tag unanswered">Expected, not in inventory</span>{% endif %}</h4>
+    {% if entry.note %}<div class="item-note">{{ entry.note }}</div>{% endif %}
+    {% for row in entry.checks %}{% include "audits/_check.html" %}{% endfor %}
+  </div>
+{% empty %}
+  <p>No items in this zone.</p>
+{% endfor %}
+
+{% if decor_form %}
+  <article id="decor">
+    <h4>Decor</h4>
+    <p>Counted on the first audit: add one record per piece. Each piece then appears in the list above.</p>
+    <form method="post" action="{% url 'add_decor' audit.pk %}">
+      {% csrf_token %}
+      <fieldset role="group">
+        {{ decor_form.description }}
+        <button type="submit" style="white-space:nowrap">Add decor piece</button>
+      </fieldset>
+    </form>
+  </article>
+{% endif %}
+
+<a role="button" href="{% url 'audit_step' audit.pk next_step %}">Continue</a>
+<a role="button" class="outline" href="{% url 'home' %}">Save and leave</a>
+{% endblock %}

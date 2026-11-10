@@ -146,13 +146,12 @@ class Command(BaseCommand):
         )
         rooms_created += created
 
-        self.stdout.write(
-            self.style.SUCCESS(
+        if options["verbosity"] > 0:
+            self.stdout.write(self.style.SUCCESS(
                 f"Seed complete: {Room.objects.count()} rooms ({rooms_created} new), "
                 f"{RoomType.objects.count()} room types, "
                 f"{RoomStandard.objects.count()} standard rows."
-            )
-        )
+            ))
 
     def apply_overrides(self, room):
         for name, total in ROOM_OVERRIDES.get(room.number, {}).items():

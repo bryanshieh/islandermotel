@@ -1,10 +1,269 @@
+from django.contrib import messages
 from django.contrib.auth.decorators import login_required
-from django.shortcuts import render
+from django.http import Http404, HttpResponseBadRequest
+from django.shortcuts import get_object_or_404, redirect, render
+from django.urls import reverse
+from django.utils import timezone
+from django.views.decorators.http import require_POST
+
+from . import checklist
+from .ac import ac_result, reading, set_reading
+from .forms import DecorForm, NewAuditForm, StartForm, WrapUpForm
+from .models import (
+    AC_END_LABEL,
+    AC_START_LABEL,
+    ActionBucket,
+    Audit,
+    Furnishing,
+    FurnishingCategory,
+    OTHER,
+    RESULT_OPTIONS,
+    Room,
+    Zone,
+)
+
+STEPS = [
+    ("start", "Start"),
+    ("entry", "Entry"),
+    ("bedroom", "Bedroom"),
+    ("bathroom", "Bathroom"),
+    ("wrapup", "Wrap-up"),
+]
+STEP_SLUGS = [slug for slug, _ in STEPS]
+
+
+def next_step(step):
+    index = STEP_SLUGS.index(step)
+    return STEP_SLUGS[min(index + 1, len(STEP_SLUGS) - 1)]
+
+
+def step_nav(audit, current):
+    counts = checklist.zone_counts(audit)
+    nav = []
+    for slug, label in STEPS:
+        total, unanswered = counts.get(slug, (None, None))
+        nav.append(
+            {
+                "slug": slug,
+                "label": label,
+                "current": slug == current,
+                "total": total,
+                "unanswered": unanswered,
+            }
+        )
+    return nav
+
+
+def reading_time(submitted, existing):
+    """Time for an A/C reading: as entered, else as already saved, else now."""
+    if submitted:
+        return submitted
+    if existing and existing.measured_at:
+        return existing.measured_at
+    return timezone.now()
 
 
 @login_required
 def home(request):
-    return render(request, "audits/placeholder.html", {"heading": "Audits"})
+    form = NewAuditForm(request.POST or None)
+    if request.method == "POST" and form.is_valid():
+        room = get_object_or_404(Room, pk=form.cleaned_data["room"], is_storage=False)
+        year = form.cleaned_data["cycle_year"]
+        audit_type = form.cleaned_data["audit_type"]
+        # Resume an unfinished audit for the same room and cycle instead of
+        # starting a duplicate.
+        audit = Audit.objects.filter(
+            room=room, cycle_year=year, audit_type=audit_type, end_time__isnull=True
+        ).first()
+        if audit is None:
+            audit = Audit.objects.create(
+                room=room, cycle_year=year, audit_type=audit_type, auditor=request.user
+            )
+        else:
+            messages.info(request, f"Resumed the unfinished {audit.cycle} audit of {room}.")
+        return redirect("audit_step", pk=audit.pk, step="start")
+
+    audits = Audit.objects.select_related("room", "room__room_type")
+    return render(request, "audits/home.html", {"form": form, "audits": audits})
+
+
+@login_required
+def audit_step(request, pk, step):
+    audit = get_object_or_404(Audit.objects.select_related("room", "room__room_type"), pk=pk)
+    if step not in STEP_SLUGS:
+        raise Http404
+    if step == "start":
+        return start_step(request, audit)
+    if step == "wrapup":
+        return wrapup_step(request, audit)
+    return zone_step(request, audit, step)
+
+
+def start_step(request, audit):
+    room = audit.room
+    first_audit = not room.audits.filter(pk__lt=audit.pk).exists()
+    ask_square_footage = room.square_footage is None or first_audit
+    start = reading(audit, AC_START_LABEL)
+    form = StartForm(
+        request.POST or None,
+        initial={
+            "ambient_temperature_f": audit.ambient_temperature_f,
+            "square_footage": room.square_footage,
+            "ac_start_value": start.measured_value if start else None,
+            "ac_start_time": start.measured_at if start else None,
+        },
+    )
+    if request.method == "POST" and form.is_valid():
+        data = form.cleaned_data
+        audit.ambient_temperature_f = data["ambient_temperature_f"]
+        audit.save()
+        if ask_square_footage and data["square_footage"]:
+            room.square_footage = data["square_footage"]
+            room.save(update_fields=["square_footage"])
+        set_reading(
+            audit,
+            AC_START_LABEL,
+            data["ac_start_value"],
+            reading_time(data["ac_start_time"], start),
+        )
+        if request.POST.get("action") == "continue":
+            return redirect("audit_step", pk=audit.pk, step=next_step("start"))
+        messages.success(request, "Saved.")
+        return redirect("audit_step", pk=audit.pk, step="start")
+    return render(
+        request,
+        "audits/step_start.html",
+        {
+            "audit": audit,
+            "room": room,
+            "form": form,
+            "ask_square_footage": ask_square_footage,
+            "nav": step_nav(audit, "start"),
+            "has_ac_unit": room.ac_unit() is not None,
+        },
+    )
+
+
+def zone_step(request, audit, step):
+    zone = Zone(step)
+    entries = checklist.build_zone(audit, zone)
+    return render(
+        request,
+        "audits/step_zone.html",
+        {
+            "audit": audit,
+            "room": audit.room,
+            "zone": zone,
+            "entries": entries,
+            "nav": step_nav(audit, step),
+            "next_step": next_step(step),
+            "decor_form": DecorForm() if zone == Zone.BEDROOM else None,
+            "buckets": ActionBucket.choices,
+        },
+    )
+
+
+def wrapup_step(request, audit):
+    end = reading(audit, AC_END_LABEL)
+    form = WrapUpForm(
+        request.POST or None,
+        initial={
+            "ac_end_value": end.measured_value if end else None,
+            "ac_end_time": end.measured_at if end else None,
+            "overall_rating": audit.overall_rating,
+            "overall_notes": audit.overall_notes,
+        },
+    )
+    if request.method == "POST" and form.is_valid():
+        data = form.cleaned_data
+        set_reading(
+            audit, AC_END_LABEL, data["ac_end_value"], reading_time(data["ac_end_time"], end)
+        )
+        audit.overall_rating = data["overall_rating"]
+        audit.overall_notes = data["overall_notes"]
+        finishing = request.POST.get("action") == "finish"
+        if finishing and audit.end_time is None:
+            audit.end_time = timezone.now()
+        audit.save()
+        if finishing:
+            messages.success(request, f"Audit of {audit.room} saved and finished.")
+            return redirect("home")
+        messages.success(request, "Saved.")
+        return redirect("audit_step", pk=audit.pk, step="wrapup")
+
+    nav = step_nav(audit, "wrapup")
+    return render(
+        request,
+        "audits/step_wrapup.html",
+        {
+            "audit": audit,
+            "room": audit.room,
+            "form": form,
+            "nav": nav,
+            "ac": ac_result(audit),
+            "unanswered_total": sum(step["unanswered"] or 0 for step in nav),
+            "issues": [f.issue for f in audit.findings.all() if hasattr(f, "issue")],
+        },
+    )
+
+
+@login_required
+@require_POST
+def finding_update(request, pk):
+    """Autosave one tap or field change for one check; returns the check's HTML."""
+    audit = get_object_or_404(Audit.objects.select_related("room", "room__room_type"), pk=pk)
+    row = checklist.find_row(audit, request.POST.get("key", ""))
+    if row is None:
+        raise Http404
+    finding = row.get_or_build_finding(audit)
+
+    if "result" in request.POST:
+        result = request.POST["result"]
+        if result and result not in dict(RESULT_OPTIONS[row.check_type]):
+            return HttpResponseBadRequest("Unknown result")
+        finding.result = result
+        if result != OTHER:
+            finding.result_other = ""
+        if not finding.is_problem:
+            finding.action_bucket = ""
+    if "result_other" in request.POST and finding.result == OTHER:
+        finding.result_other = request.POST["result_other"].strip()[:200]
+    if "action_bucket" in request.POST and finding.is_problem:
+        bucket = request.POST["action_bucket"]
+        if bucket not in ActionBucket.values:
+            return HttpResponseBadRequest("Unknown bucket")
+        finding.action_bucket = bucket
+    if "notes" in request.POST:
+        finding.notes = request.POST["notes"].strip()
+    if request.POST.get("remove_photo") and finding.photo:
+        finding.photo.delete(save=False)
+    if "photo" in request.FILES:
+        finding.photo = request.FILES["photo"]
+    finding.save()
+
+    return render(
+        request,
+        "audits/_check.html",
+        {"audit": audit, "row": row, "buckets": ActionBucket.choices},
+    )
+
+
+@login_required
+@require_POST
+def add_decor(request, pk):
+    """First-audit decor count: add one Furnishing record per piece."""
+    audit = get_object_or_404(Audit, pk=pk)
+    form = DecorForm(request.POST)
+    if form.is_valid():
+        Furnishing.objects.create(
+            room=audit.room,
+            category=FurnishingCategory.DECOR,
+            zone=Zone.BEDROOM,
+            name=form.cleaned_data["description"],
+        )
+    else:
+        messages.error(request, "Describe the decor piece to add it.")
+    return redirect(reverse("audit_step", args=[audit.pk, "bedroom"]) + "#decor")
 
 
 @login_required
