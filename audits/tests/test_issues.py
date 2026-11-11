@@ -57,8 +57,11 @@ class FindingToIssueTests(TestCase):
         self.finding(result="ok", bucket="")
         self.assertEqual(Issue.objects.count(), 0)
 
-    def test_bucket_none_monitor_or_unset_creates_no_issue(self):
-        for bucket in (ActionBucket.NONE, ActionBucket.MONITOR, ""):
+    def test_actions_are_none_fix_now_work_order_capex(self):
+        self.assertEqual(ActionBucket.values, ["none", "fix_now", "work_order", "capex"])
+
+    def test_bucket_none_or_unset_creates_no_issue(self):
+        for bucket in (ActionBucket.NONE, ""):
             self.finding(bucket=bucket)
         self.assertEqual(Issue.objects.count(), 0)
 
@@ -103,9 +106,9 @@ class FindingToIssueTests(TestCase):
         self.assertEqual(issue.date_resolved, timezone.localdate())
         self.assertEqual(issue.resolution_notes, AUTO_CLOSE_NOTE)
 
-    def test_moving_the_bucket_to_monitor_closes_its_issue(self):
+    def test_moving_the_bucket_to_none_closes_its_issue(self):
         finding = self.finding()
-        finding.action_bucket = ActionBucket.MONITOR
+        finding.action_bucket = ActionBucket.NONE
         finding.save()
         self.assertEqual(Issue.objects.get().status, IssueStatus.DONE)
 
@@ -158,8 +161,8 @@ class FindingToIssueTests(TestCase):
         self.assertTrue(all(i.status == IssueStatus.OPEN for i in Issue.objects.all()))
 
     def test_missing_expected_item_creates_an_issue(self):
-        standard = self.room.room_type.standards.get(name="Threshold")
-        self.room.building_elements.filter(element="threshold").delete()
+        standard = self.room.room_type.standards.get(name="Sink counter")
+        self.room.building_elements.filter(element="counter").delete()
         Finding.objects.create(
             audit=self.audit,
             target_kind=ItemKind.BUILDING,
@@ -168,4 +171,16 @@ class FindingToIssueTests(TestCase):
             result="missing",
             action_bucket=ActionBucket.WORK_ORDER,
         )
-        self.assertEqual(Issue.objects.get().title, "Threshold (Entry): Missing")
+        self.assertEqual(Issue.objects.get().title, "Sink counter (Bathroom): Missing")
+
+    def test_not_applicable_is_not_a_problem(self):
+        self.finding(result="n_a", bucket=ActionBucket.FIX_NOW)
+        self.assertEqual(Issue.objects.count(), 0)
+
+    def test_problem_smell_creates_a_room_level_issue(self):
+        Finding.objects.create(
+            audit=self.audit, check_type=CheckType.SMELL, result="musty",
+            action_bucket=ActionBucket.WORK_ORDER,
+        )
+        issue = Issue.objects.get()
+        self.assertEqual((issue.title, issue.room), ("Room smell: Musty", self.room))

@@ -32,7 +32,7 @@ class GenerateInventoryTests(TestCase):
 
         standard(ItemKind.FURNISHING, "chair", Zone.BEDROOM, "Chair", 2)
         standard(ItemKind.FIXTURE, "tv", Zone.BEDROOM, "TV")
-        for zone in (Zone.ENTRY, Zone.BEDROOM, Zone.BATHROOM):
+        for zone in (Zone.BEDROOM, Zone.BATHROOM):
             standard(ItemKind.BUILDING, "wall", zone, "Walls")
 
     def test_creating_a_room_generates_one_record_per_unit(self):
@@ -45,9 +45,7 @@ class GenerateInventoryTests(TestCase):
     def test_per_zone_elements_get_one_record_per_zone(self):
         room = Room.objects.create(property=self.prop, room_type=self.room_type, number="101")
         walls = room.building_elements.filter(element="wall")
-        self.assertEqual(
-            sorted(walls.values_list("zone", flat=True)), ["bathroom", "bedroom", "entry"]
-        )
+        self.assertEqual(sorted(walls.values_list("zone", flat=True)), ["bathroom", "bedroom"])
 
     def test_generation_is_not_repeated(self):
         room = Room.objects.create(property=self.prop, room_type=self.room_type, number="101")
@@ -102,26 +100,42 @@ class SeedCommandTests(TestCase):
     def test_standard_room_inventory(self):
         room = Room.objects.get(number="101")
         self.assertEqual(room.furnishings.count(), 11)
-        self.assertEqual(room.fixtures.count(), 20)
-        self.assertEqual(room.building_elements.count(), 21)
+        self.assertEqual(room.fixtures.count(), 23)
+        self.assertEqual(room.building_elements.count(), 14)
         self.assertEqual(room.furnishings.filter(category="chair").count(), 2)
         self.assertEqual(room.furnishings.filter(category="pillow").count(), 2)
         self.assertEqual(room.fixtures.filter(name="Sconce or lamp").count(), 2)
-        self.assertEqual(room.fixtures.filter(category="outlet").count(), 2)
+        self.assertEqual(room.fixtures.filter(category="outlet", zone="bedroom").count(), 2)
+        self.assertEqual(room.fixtures.filter(category="outlet", zone="bathroom").count(), 1)
+        self.assertEqual(room.fixtures.filter(category="mirror", zone="bathroom").count(), 1)
+        self.assertEqual(room.fixtures.filter(category="mini_fridge", zone="bedroom").count(), 1)
+        self.assertEqual(room.fixtures.filter(category="shower_handle").count(), 2)
+        self.assertEqual(room.fixtures.get(category="shower").notes, "Shower head")
         self.assertFalse(room.furnishings.filter(category="decor").exists())
         self.assertIsNone(room.square_footage)
         for element in ("wall", "floor", "window", "trim"):
             self.assertEqual(
                 sorted(room.building_elements.filter(element=element).values_list("zone", flat=True)),
-                ["bathroom", "bedroom", "entry"],
+                ["bathroom", "bedroom"],
             )
         self.assertIsNotNone(room.ac_unit())
+
+    def test_there_is_no_entry_zone(self):
+        room = Room.objects.get(number="101")
+        self.assertEqual(room.building_elements.get(element="door").zone, "bedroom")
+        self.assertFalse(room.building_elements.filter(element__in=["hinge", "threshold"]).exists())
+        self.assertEqual(
+            sorted(room.building_elements.filter(element="signage").values_list("zone", flat=True)),
+            ["bathroom", "bedroom"],
+        )
+        for model in (Furnishing, Fixture, BuildingElement, RoomStandard):
+            self.assertFalse(model.objects.filter(zone="entry").exists(), model)
 
     def test_every_guest_room_matches_the_standard_except_room_9(self):
         for room in Room.objects.filter(is_storage=False).exclude(number="9"):
             self.assertEqual(room.furnishings.count(), 11, room)
-            self.assertEqual(room.fixtures.count(), 20, room)
-            self.assertEqual(room.building_elements.count(), 21, room)
+            self.assertEqual(room.fixtures.count(), 23, room)
+            self.assertEqual(room.building_elements.count(), 14, room)
 
     def test_room_9_exception(self):
         room = Room.objects.get(number="9")
@@ -130,7 +144,7 @@ class SeedCommandTests(TestCase):
         self.assertEqual(room.furnishings.filter(category="pillow").count(), 4)
         self.assertEqual(room.furnishings.filter(category="chair").count(), 2)
         self.assertEqual(room.furnishings.count(), 18)
-        self.assertEqual(room.fixtures.count(), 20)
+        self.assertEqual(room.fixtures.count(), 23)
         # Room 10 is also XLRG but follows the standard.
         self.assertEqual(Room.objects.get(number="10").furnishings.filter(category="mattress").count(), 1)
 

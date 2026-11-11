@@ -3,9 +3,9 @@
   <span class="check-label">{{ row.label }}</span>
   {% if not row.result %}<span class="tag unanswered">Unanswered</span>{% endif %}
   <div class="btn-row">
-    {% for value, label, good in row.buttons %}
+    {% for value, label, css in row.buttons %}
       <button type="button"
-              class="{% if good %}good{% else %}bad{% endif %} {% if row.result == value %}selected{% else %}outline secondary{% endif %}"
+              class="{{ css }} {% if row.result == value %}selected{% else %}outline secondary{% endif %}"
               hx-post="{{ update_url }}"
               hx-vals='{"key": "{{ row.key }}", "result": "{{ value }}"}'
               hx-target="#{{ row.dom_id }}" hx-swap="outerHTML">{{ label }}</button>
@@ -20,14 +20,21 @@
 
   {% if row.result %}
     {% with finding=row.finding %}
+    {# Every result gets one free-text field. For Other it is the description. #}
     {% if row.result == "other" %}
       <input type="text" name="result_other" maxlength="200" value="{{ finding.result_other }}"
              placeholder="Describe what you found" aria-label="Other result"
              hx-post="{{ update_url }}" hx-trigger="change, keyup changed delay:800ms" hx-swap="none"
              hx-vals='{"key": "{{ row.key }}"}'
              hx-on::after-request="this.nextElementSibling.textContent = event.detail.successful ? 'Saved' : 'Not saved, try again'">
-      <span class="saved-note"></span>
+    {% else %}
+      <input type="text" name="notes" value="{{ finding.notes }}"
+             placeholder="Note (optional)" aria-label="Note"
+             hx-post="{{ update_url }}" hx-trigger="change, keyup changed delay:800ms" hx-swap="none"
+             hx-vals='{"key": "{{ row.key }}"}'
+             hx-on::after-request="this.nextElementSibling.textContent = event.detail.successful ? 'Saved' : 'Not saved, try again'">
     {% endif %}
+    <span class="saved-note"></span>
 
     {% if finding.is_problem %}
       <div class="details-box">
@@ -45,13 +52,8 @@
       </div>
     {% endif %}
 
-    <details class="details-box" {% if finding.is_problem or finding.notes or finding.photo %}open{% endif %}>
-      <summary>Photo and note (optional)</summary>
-      <textarea name="notes" rows="2" placeholder="Note" aria-label="Note"
-                hx-post="{{ update_url }}" hx-trigger="change, keyup changed delay:800ms" hx-swap="none"
-                hx-vals='{"key": "{{ row.key }}"}'
-                hx-on::after-request="this.nextElementSibling.textContent = event.detail.successful ? 'Note saved' : 'Not saved, try again'">{{ finding.notes }}</textarea>
-      <span class="saved-note"></span>
+    <details class="details-box" {% if finding.photo %}open{% endif %}>
+      <summary>Photo (optional)</summary>
       {% if finding.photo %}
         <p>
           <a href="{{ finding.photo.url }}" target="_blank"><img class="thumb" src="{{ finding.photo.url }}" alt="Finding photo"></a>

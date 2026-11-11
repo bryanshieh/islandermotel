@@ -18,15 +18,16 @@ from audits.models import (
 )
 
 F, X, B = ItemKind.FURNISHING, ItemKind.FIXTURE, ItemKind.BUILDING
-ENTRY, BED, BATH = Zone.ENTRY, Zone.BEDROOM, Zone.BATHROOM
+BED, BATH = Zone.BEDROOM, Zone.BATHROOM
 
 # (zone, name, kind, category or element, quantity, notes)
-# From "Default inventory per room" in docs/PRD.md. Decor is not seeded; it is
-# counted on the first audit.
+# From "Default inventory per room" in docs/PRD.md, with Bryan's changes after
+# the first test run: there is no entry zone (the entry door is a bedroom item
+# that covers its hinges, locks and threshold), the bedroom has a mini fridge,
+# the bathroom has an outlet, and the shower has two handles (hot and cold).
+# Decor is not seeded; it is counted on the first audit.
 STANDARD_ITEMS = [
-    (ENTRY, "Entry door", B, "door", 1, "Deadbolt, plus doorknob with lock"),
-    (ENTRY, "Hinges", B, "hinge", 1, ""),
-    (ENTRY, "Threshold", B, "threshold", 1, ""),
+    (BED, "Entry door", B, "door", 1, "Deadbolt, plus doorknob with lock; includes hinges and threshold"),
     (BED, "Bed frame", F, "bed_frame", 1, "Queen"),
     (BED, "Headboard", F, "headboard", 1, "Queen"),
     (BED, "Mattress", F, "mattress", 1, "Queen"),
@@ -47,17 +48,19 @@ STANDARD_ITEMS = [
     (BED, "Pillow", F, "pillow", 2, ""),
     (BED, "Outlet", X, "outlet", 2, "Varies with room and zone"),
     (BED, "Smoke detector", X, "smoke_detector", 1, ""),
+    (BED, "Mini fridge", X, "mini_fridge", 1, ""),
     (BATH, "Light", X, "light", 1, ""),
     (BATH, "Mirror", X, "mirror", 1, ""),
     (BATH, "Toilet", X, "toilet", 1, ""),
     (BATH, "Sink", X, "sink", 1, ""),
     (BATH, "Sink counter", B, "counter", 1, ""),
-    (BATH, "Shower", X, "shower", 1, "Shower head and 2 nozzles"),
-    (BATH, "Shower handle", X, "shower_handle", 1, ""),
+    (BATH, "Shower", X, "shower", 1, "Shower head"),
+    (BATH, "Shower handle", X, "shower_handle", 2, "Hot and cold"),
     (BATH, "Towel rack", X, "towel_rack", 1, ""),
+    (BATH, "Outlet", X, "outlet", 1, "Varies with room"),
 ]
 
-# "All zones" rows: one record per zone.
+# "All zones" rows: one record per zone (bedroom and bathroom).
 PER_ZONE_ITEMS = [
     ("Walls", "wall", ""),
     ("Flooring", "floor", "Carpet, tile or tileboard"),
@@ -65,7 +68,7 @@ PER_ZONE_ITEMS = [
     ("Trim", "trim", ""),
     ("Signage", "signage", "For example no smoking, do not flush tampons"),
 ]
-for _zone in (ENTRY, BED, BATH):
+for _zone in (BED, BATH):
     for _name, _element, _notes in PER_ZONE_ITEMS:
         STANDARD_ITEMS.append((_zone, _name, B, _element, 1, _notes))
 # Ceilings are in the PRD audit flow for the bedroom and bathroom.

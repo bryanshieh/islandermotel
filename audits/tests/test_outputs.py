@@ -47,7 +47,7 @@ class OutputTestCase(TestCase):
         problem("101", 2026, "capex", name="Toilet")
         problem("7", 2026, "work_order")
         problem("9", 2026, "capex")
-        problem("9", 2026, "monitor", name="Toilet")  # no issue
+        problem("9", 2026, "none", name="Toilet")  # no issue
         # 2025: one older issue in room 7
         problem("7", 2025, "fix_now")
 

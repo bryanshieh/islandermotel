@@ -7,7 +7,15 @@
   <div class="item">
     <h4>{{ entry.label }}{% if entry.absent %} <span class="tag unanswered">Expected, not in inventory</span>{% endif %}</h4>
     {% if entry.note %}<div class="item-note">{{ entry.note }}</div>{% endif %}
+    {% if entry.is_floor %}{% include "audits/_material.html" with item=entry.item %}{% endif %}
     {% for row in entry.checks %}{% include "audits/_check.html" %}{% endfor %}
+    {% if entry.can_delete %}
+      <form method="post" action="{% url 'delete_decor' audit.pk entry.item.pk %}" style="margin:.5rem 0 0"
+            onsubmit="return confirm('Delete this decor piece and its answers in this audit?')">
+        {% csrf_token %}
+        <button type="submit" class="outline secondary" style="width:auto;margin:0">Delete this item</button>
+      </form>
+    {% endif %}
   </div>
 {% empty %}
   <p>No items in this zone.</p>
@@ -16,7 +24,7 @@
 {% if decor_form %}
   <article id="decor">
     <h4>Decor</h4>
-    <p>Counted on the first audit: add one record per piece. Each piece then appears in the list above.</p>
+    <p>Counted on the first audit: add one record per piece. Each piece then appears in the list above, where it can also be deleted.</p>
     <form method="post" action="{% url 'add_decor' audit.pk %}">
       {% csrf_token %}
       <fieldset role="group">

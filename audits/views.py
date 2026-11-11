@@ -15,7 +15,11 @@ from .forms import DecorForm, IssueForm, NewAuditForm, StartForm, WrapUpForm
 from .models import (
     AC_END_LABEL,
     AC_START_LABEL,
+    FLOORING_TYPES,
     ActionBucket,
+    BuildingElement,
+    BuildingElementType,
+    Finding,
     Audit,
     Furnishing,
     FurnishingCategory,
@@ -32,7 +36,6 @@ from .models import (
 
 STEPS = [
     ("start", "Start"),
-    ("entry", "Entry"),
     ("bedroom", "Bedroom"),
     ("bathroom", "Bathroom"),
     ("wrapup", "Wrap-up"),
@@ -148,6 +151,8 @@ def start_step(request, audit):
             "ask_square_footage": ask_square_footage,
             "nav": step_nav(audit, "start"),
             "has_ac_unit": room.ac_unit() is not None,
+            "smell": checklist.smell_row(audit),
+            "buckets": ActionBucket.choices,
         },
     )
 
@@ -166,6 +171,7 @@ def zone_step(request, audit, step):
             "nav": step_nav(audit, step),
             "next_step": next_step(step),
             "decor_form": DecorForm() if zone == Zone.BEDROOM else None,
+            "flooring_types": FLOORING_TYPES,
             "buckets": ActionBucket.choices,
         },
     )
@@ -272,6 +278,39 @@ def add_decor(request, pk):
     else:
         messages.error(request, "Describe the decor piece to add it.")
     return redirect(reverse("audit_step", args=[audit.pk, "bedroom"]) + "#decor")
+
+
+@login_required
+@require_POST
+def delete_decor(request, pk, item_pk):
+    """Delete a decor piece added during an audit, with this audit's findings on it."""
+    audit = get_object_or_404(Audit, pk=pk)
+    item = get_object_or_404(
+        Furnishing, pk=item_pk, room=audit.room, category=FurnishingCategory.DECOR
+    )
+    Finding.objects.filter(audit=audit, furnishing=item).delete()
+    item.delete()
+    return redirect(reverse("audit_step", args=[audit.pk, "bedroom"]) + "#decor")
+
+
+@login_required
+@require_POST
+def set_material(request, pk, item_pk):
+    """One-tap flooring type; saved on the flooring record itself."""
+    audit = get_object_or_404(Audit, pk=pk)
+    item = get_object_or_404(
+        BuildingElement, pk=item_pk, room=audit.room, element=BuildingElementType.FLOOR
+    )
+    material = request.POST.get("material", "")
+    if material and material not in FLOORING_TYPES:
+        return HttpResponseBadRequest("Unknown flooring type")
+    item.material_or_finish = material
+    item.save(update_fields=["material_or_finish"])
+    return render(
+        request,
+        "audits/_material.html",
+        {"audit": audit, "item": item, "flooring_types": FLOORING_TYPES},
+    )
 
 
 def to_int(value):
