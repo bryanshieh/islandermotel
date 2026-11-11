@@ -14,14 +14,14 @@
         <small>Leave empty to use the time you press Save.</small></label>
     </div>
     {{ form.ac_end_value.errors }}{{ form.ac_end_time.errors }}
-    <table>
+    <table class="stack">
       <thead><tr><th>First reading</th><th>Second reading</th><th>Elapsed</th><th>Drop</th><th>Result</th></tr></thead>
       <tbody><tr>
-        <td>{% if ac.start_value is not None %}{{ ac.start_value }}°F at {{ ac.start_at|date:"g:i A" }}{% else %}Not logged{% endif %}</td>
-        <td>{% if ac.end_value is not None %}{{ ac.end_value }}°F at {{ ac.end_at|date:"g:i A" }}{% else %}Not logged{% endif %}</td>
-        <td>{% if ac.complete %}{{ ac.elapsed_minutes }} min{% else %}–{% endif %}</td>
-        <td>{% if ac.complete %}{{ ac.drop }}°F{% else %}–{% endif %}</td>
-        <td><span class="tag {{ ac.status }}">{{ ac.status|capfirst }}</span></td>
+        <td data-label="First reading">{% if ac.start_value is not None %}{{ ac.start_value }}°F at {{ ac.start_at|date:"g:i A" }}{% else %}Not logged{% endif %}</td>
+        <td data-label="Second reading">{% if ac.end_value is not None %}{{ ac.end_value }}°F at {{ ac.end_at|date:"g:i A" }}{% else %}Not logged{% endif %}</td>
+        <td data-label="Elapsed">{% if ac.complete %}{{ ac.elapsed_minutes }} min{% else %}–{% endif %}</td>
+        <td data-label="Drop">{% if ac.complete %}{{ ac.drop }}°F{% else %}–{% endif %}</td>
+        <td data-label="Result"><span class="tag {{ ac.status }}">{{ ac.status|capfirst }}</span></td>
       </tr></tbody>
     </table>
     <small>Pass: a drop of at least 20°F within 10 minutes. Calculated from the two saved readings.</small>

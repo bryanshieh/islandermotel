@@ -39,6 +39,26 @@
     td select { margin: 0; padding-top: .3rem; padding-bottom: .3rem; }
     .num { text-align: right; }
     .rating label { display: inline-block; margin-right: 1rem; font-size: 1.1rem; }
+
+    /* Phone layout */
+    @media (max-width: 600px) {
+      header nav { flex-direction: column; align-items: flex-start; }
+      header nav ul { flex-wrap: wrap; margin: 0; }
+      header nav li { padding: .35rem .6rem .35rem 0; }
+      h2 { font-size: 1.4rem; }
+      nav.steps a { flex: 1 1 45%; text-align: center; padding: .6rem .4rem; }
+      .item { padding: .6rem .7rem; }
+      .btn-row button { flex: 1 1 30%; min-width: 0; padding-left: .4rem; padding-right: .4rem; }
+      .rating label { margin-right: 1.5rem; font-size: 1.25rem; }
+      /* Tables become one card per row, with the column name beside each value. */
+      table.stack thead { display: none; }
+      table.stack tr { display: block; border: 1px solid var(--pico-muted-border-color);
+                       border-radius: .5rem; margin-bottom: .75rem; padding: .25rem .5rem; }
+      table.stack td { display: flex; justify-content: space-between; align-items: center; gap: 1rem;
+                       border: 0; padding: .3rem .25rem; text-align: right; }
+      table.stack td::before { content: attr(data-label); font-weight: 600; text-align: left; flex: none; }
+      table.stack td select { max-width: 60%; }
+    }
   </style>
 </head>
 <body hx-headers='{"X-CSRFToken": "{{ csrf_token }}"}'>

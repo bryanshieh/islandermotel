@@ -52,8 +52,9 @@
       </div>
     {% endif %}
 
-    <details class="details-box" {% if finding.photo %}open{% endif %}>
+    <details class="details-box" {% if finding.photo or photo_error %}open{% endif %}>
       <summary>Photo (optional)</summary>
+      {% if photo_error %}<p><span class="tag fail">{{ photo_error }}</span></p>{% endif %}
       {% if finding.photo %}
         <p>
           <a href="{{ finding.photo.url }}" target="_blank"><img class="thumb" src="{{ finding.photo.url }}" alt="Finding photo"></a>

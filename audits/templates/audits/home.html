@@ -15,16 +15,16 @@
 
 <h2>Saved audits</h2>
 {% if audits %}
-<table>
+<table class="stack">
   <thead><tr><th>Room</th><th>Type</th><th>Cycle</th><th>Date</th><th>State</th><th></th></tr></thead>
   <tbody>
   {% for audit in audits %}
     <tr>
-      <td>{{ audit.room.number }}</td>
-      <td>{{ audit.room.room_type }}</td>
-      <td>{{ audit.cycle }}</td>
-      <td>{{ audit.audit_date|date:"M j, Y" }}</td>
-      <td>{% if audit.is_finished %}Finished{% else %}In progress{% endif %}</td>
+      <td data-label="Room">{{ audit.room.number }}</td>
+      <td data-label="Type">{{ audit.room.room_type }}</td>
+      <td data-label="Cycle">{{ audit.cycle }}</td>
+      <td data-label="Date">{{ audit.audit_date|date:"M j, Y" }}</td>
+      <td data-label="State">{% if audit.is_finished %}Finished{% else %}In progress{% endif %}</td>
       <td><a href="{% url 'audit_step' audit.pk 'start' %}">{% if audit.is_finished %}Open{% else %}Resume{% endif %}</a></td>
     </tr>
   {% endfor %}

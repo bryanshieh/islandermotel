@@ -1,6 +1,6 @@
 # Islander Motel Room Audit App: PRD
 
-Nov 10, 2026 · Bryan · revised Nov 11, 2026 after the first local test run (see "Revisions" at the end)
+Nov 10, 2026 · Bryan · revised Nov 11, 2026 after the first local test run and again to add phone use and self-hosting (see "Revisions" at the end)
 
 ## Overview and goals
 
@@ -24,10 +24,10 @@ Build a small web app that records a condition audit of all 34 Islander Motel ro
 
 The only user for v1 is Bryan, auditing all 34 rooms in person.
 
-- **Device:** laptop or tablet first. Phone layout is not a design target for v1.
+- **Device:** laptop, tablet or phone. The phone is the main device for walking rooms and taking photos; the laptop runs the app.
 - **Connectivity:** wifi is reliable, so no offline mode.
 - **Login:** one account, using Django's built-in authentication.
-- **Hosting:** run locally for the test run, hosted later.
+- **Hosting:** self-hosted on Bryan's laptop. The phone reaches it over the same wifi or over Tailscale, and it only needs to be up while the laptop is on. A paid always-on host is deferred.
 - **Room variety:** 4 room types, with minor square-footage differences within each type: SML (7 rooms), STD (20), LRG (5) and XLRG (2), plus Storage as the 35th room. Every room has a queen bed except room 9 (XLRG), which has two.
 - **Look and feel:** functional is enough; it does not need to be polished.
 
@@ -38,12 +38,13 @@ v1 covers the audit loop end to end: set up rooms, run an audit, triage issues, 
 | In v1 | Out of v1 |
 | --- | --- |
 | Rooms and room types, with default inventory generated from the type | Offline mode |
-| Guided, zone-by-zone audit on a laptop or tablet | Phone-optimized layout |
+| Guided, zone-by-zone audit on a laptop, tablet or phone | Offline use on the phone |
 | Findings: condition, function, presence, smell, measurements (A/C test) | Multiple users, roles, contractor access |
-| Optional photo on any finding | Per-room history view (data is kept, screen is not built) |
+| Optional photo on any finding, taken with the phone camera and shrunk on upload | Per-room history view (data is kept, screen is not built) |
 | Issues with a light lifecycle: status, cost estimate, resolved date | Audit progress view (for example, 12 of 34 rooms done) |
 | Issue list with filters and CSV export | Full maintenance system: assignees, history, priorities beyond a field |
-| Summary dashboard: issues by bucket and by room type, A/C test results | Hosted deployment (planned after the local test run) |
+| Summary dashboard: issues by bucket and by room type, A/C test results | Hosted deployment on an always-on server (deferred; see Hosting) |
+| Self-hosted access from a phone over wifi or Tailscale | |
 
 ## Decisions log
 
@@ -54,11 +55,11 @@ The first table lists scope and workflow decisions. The second lists the technic
 | Area | Decision |
 | --- | --- |
 | Users | Just Bryan for now |
-| Device | Laptop or tablet first; phone not a target |
+| Device | Laptop, tablet or phone; screens work at phone width |
 | Connectivity | Wifi, no offline mode |
 | Framework | Django, with Postgres as the eventual database |
 | Local database | SQLite for the test run, switch to Postgres when hosted |
-| Hosting | Run locally first |
+| Hosting | Self-hosted on the laptop; no paid or free cloud host for now |
 | Initial inventory | Auto-generated from room type, corrected during the first audit |
 | Audit flow | Guided, zone by zone (bedroom, then bathroom; there is no separate entry zone); every item in a zone is listed, with no result pre-selected; audits can be saved mid-way, resumed later, and saved with unanswered items |
 | Issues | Light lifecycle: status, cost estimate, resolved date |
@@ -74,9 +75,9 @@ The first table lists scope and workflow decisions. The second lists the technic
 | Frontend approach | Server-rendered Django templates with HTMX for the interactive bits; no separate JavaScript build | A React single-page app: more flexible, but a second codebase and build step for one user |
 | Setup screens | Use Django admin for rooms, room types, standards and inventory corrections; build custom screens only for the audit and issues | Custom screens for everything: slower to reach a test |
 | Styling | One off-the-shelf CSS framework (Bootstrap or Pico) with large touch targets for tablet | Hand-written CSS: no benefit for a test run |
-| Photo storage | Local media folder now; an S3-compatible bucket when hosted | Bucket from day one: extra setup before any test |
+| Photo storage | Local media folder on the laptop; photos are shrunk to 1600 px JPEG on upload and need a login to view. An S3-compatible bucket only if the app is ever cloud-hosted | Bucket from day one: extra setup before any test |
 | Login | Django's built-in login, one superuser | None while local: saves nothing meaningful and must be added later |
-| Hosting later | Render, Railway or Fly.io with managed Postgres, deployed from a Git repo | Self-managed server: more control, more upkeep |
+| Hosting | Self-hosted: the app runs on the laptop (`serve_phone`), reached from the phone over the same wifi or Tailscale. Free, and data stays in one place; it is only up while the laptop is on | A cloud host. Free tiers were ruled out (no lasting disk, expiring databases, sleeping servers); Render at about $8 a month with a disk is the fallback if always-on access is wanted |
 
 ## Data model
 
@@ -181,7 +182,7 @@ The audit walks the room in the order Bryan physically moves through it, and eac
 - Items that are expected but absent (from the room's standard) appear in the list so they can be marked missing.
 - A/C start and end readings are recorded as measurements. An audit can be saved at any point and resumed later, including with items still unanswered, which stay marked as unanswered.
 
-The screens are sized for a laptop or tablet, with large buttons and no horizontal scrolling. Audits outside the annual cycle, such as when new inventory comes online, reuse the same whole-room flow in v1; auditing only selected items is deferred.
+The screens work on a laptop, tablet or phone, with large buttons and no horizontal scrolling. On a phone the result buttons fill the row and tables become one card per row. Audits outside the annual cycle, such as when new inventory comes online, reuse the same whole-room flow in v1; auditing only selected items is deferred.
 
 ## Issue workflow
 
@@ -239,7 +240,8 @@ Django makes sense here: its models map almost one-to-one onto the entities abov
 | 3. Issues | Issues created from findings, issue list with filters, status editing, CSV export | A filtered issue list exports to CSV |
 | 4. Dashboard | Issue counts by bucket and room type, A/C results table | Dashboard totals match the issue list |
 | 5. Test run | Audit a handful of rooms for real, log what slowed down or broke | List of fixes and a decision on hosting |
-| 6. Hosting (after the test run) | Postgres, bucket storage, managed host | Same app reachable by URL |
+| 6. Phone use and self-hosting | Phone layout, photo shrinking, `serve_phone` for wifi or Tailscale access | A room is audited from the phone with photos |
+| 7. Cloud hosting (deferred, only if always-on access is wanted) | Postgres, bucket storage, managed host | Same app reachable by URL |
 
 Phase 1 depends on knowing the room types and their default inventory; phases 2 to 4 depend only on phase 1.
 
@@ -248,7 +250,7 @@ Phase 1 depends on knowing the room types and their default inventory; phases 2 
 **Risks**
 
 - **Generated inventory may not match reality.** Rooms within a type can differ, so the first audit doubles as an inventory correction pass.
-- **Local-only hosting.** Photos and the database live on the laptop, so they need backing up: copy the database file and the photo folder to another location from time to time. A one-click export is out of v1.
+- **Self-hosted on the laptop.** The app is only reachable while the laptop is on, awake and on the same wifi (or Tailscale). On shared wifi the connection is not encrypted, so the guest network should not be used; Tailscale is the safer route. Photos and the database live on the laptop, so they need backing up: copy the database file and the photo folder to another location from time to time. A one-click export is out of v1.
 - **Scope creep.** Per-room history and an audit progress view are tempting and are deliberately left out of v1; the data model already supports both later.
 - **Form fatigue.** Listing every item with no default means more taps per room. If an audit takes much longer than the target, a per-zone "all OK" shortcut is the first thing to revisit. Many furnishings are already damaged, so the first audit will likely log many findings and run toward the upper end of the target.
 
@@ -270,3 +272,9 @@ Phase 1 depends on knowing the room types and their default inventory; phases 2 
 - Flooring type (carpet, tile or tileboard) is picked on each flooring item during the audit.
 - Default inventory: added a mini fridge to the bedroom and outlets to the bathroom; the shower has a shower head and two handles (hot and cold), not two nozzles; ceilings and signage are one per zone.
 - Decor pieces added during an audit can be deleted from the same screen.
+
+**Nov 11, 2026, phone use and self-hosting**
+
+- Phone layout moved into scope. The phone is the main device for walking rooms.
+- Hosting decision: self-hosted on the laptop, reached from the phone over the same wifi or Tailscale. Free cloud tiers were ruled out and a paid host (about $8 a month) is deferred until always-on access is wanted.
+- Photos taken on the phone are shrunk to 1600 px JPEG on upload and need a login to view.

@@ -1,15 +1,15 @@
 <tr id="issue-{{ issue.pk }}">
-  <td>{{ issue.room.number }}</td>
-  <td>{{ issue.title }}</td>
-  <td>{{ issue.get_bucket_display }}</td>
-  <td>{{ issue.get_priority_display }}</td>
-  <td>
+  <td data-label="Room">{{ issue.room.number }}</td>
+  <td data-label="Item">{{ issue.title }}</td>
+  <td data-label="Bucket">{{ issue.get_bucket_display }}</td>
+  <td data-label="Priority">{{ issue.get_priority_display }}</td>
+  <td data-label="Status">
     <select name="status" aria-label="Status"
             hx-post="{% url 'issue_status' issue.pk %}" hx-target="#issue-{{ issue.pk }}" hx-swap="outerHTML"
             hx-vals='{"query": "{{ query|escapejs }}"}'>
       {% for value, label in statuses %}<option value="{{ value }}" {% if issue.status == value %}selected{% endif %}>{{ label }}</option>{% endfor %}
     </select>
   </td>
-  <td class="num">{% if issue.cost_estimate is not None %}${{ issue.cost_estimate }}{% endif %}</td>
+  <td class="num" data-label="Cost estimate">{% if issue.cost_estimate is not None %}${{ issue.cost_estimate }}{% else %}–{% endif %}</td>
   <td><a href="{% url 'issue_edit' issue.pk %}{% if query %}?back={{ query|urlencode:'' }}{% endif %}">Edit</a></td>
 </tr>

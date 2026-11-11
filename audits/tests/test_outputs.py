@@ -141,7 +141,8 @@ class DashboardTests(OutputTestCase):
             {"SML": 1, "STD": 2, "LRG": 0, "XLRG": 1},
         )
         self.assertEqual(context["issue_total"], 4)
-        self.assertNotContains(response, "%")
+        body = response.content.decode().split("<main", 1)[1]
+        self.assertNotIn("%", body)
 
     def test_totals_match_the_issue_list(self):
         context = self.client.get("/dashboard/").context

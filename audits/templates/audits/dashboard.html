@@ -44,20 +44,20 @@
 <p>Passed: <strong>{{ ac_pass }}</strong> · Failed: <strong>{{ ac_fail }}</strong> · Incomplete: <strong>{{ ac_incomplete }}</strong>
    <small>(target: at least 20°F drop within 10 minutes)</small></p>
 {% if ac_rows %}
-<table>
+<table class="stack">
   <thead>
     <tr><th>Room</th><th>Type</th><th class="num">Start (°F)</th><th class="num">End (°F)</th><th class="num">Elapsed (min)</th><th class="num">Drop (°F)</th><th>Result</th></tr>
   </thead>
   <tbody>
     {% for row in ac_rows %}
     <tr>
-      <td><a href="{% url 'audit_step' row.audit.pk 'wrapup' %}">{{ row.room.number }}</a></td>
-      <td>{{ row.room.room_type }}</td>
-      <td class="num">{{ row.ac.start_value|default_if_none:"–" }}</td>
-      <td class="num">{{ row.ac.end_value|default_if_none:"–" }}</td>
-      <td class="num">{% if row.ac.complete %}{{ row.ac.elapsed_minutes }}{% else %}–{% endif %}</td>
-      <td class="num">{% if row.ac.complete %}{{ row.ac.drop }}{% else %}–{% endif %}</td>
-      <td><span class="tag {{ row.ac.status }}">{{ row.ac.status|capfirst }}</span></td>
+      <td data-label="Room"><a href="{% url 'audit_step' row.audit.pk 'wrapup' %}">{{ row.room.number }}</a></td>
+      <td data-label="Type">{{ row.room.room_type }}</td>
+      <td class="num" data-label="Start (°F)">{{ row.ac.start_value|default_if_none:"–" }}</td>
+      <td class="num" data-label="End (°F)">{{ row.ac.end_value|default_if_none:"–" }}</td>
+      <td class="num" data-label="Elapsed (min)">{% if row.ac.complete %}{{ row.ac.elapsed_minutes }}{% else %}–{% endif %}</td>
+      <td class="num" data-label="Drop (°F)">{% if row.ac.complete %}{{ row.ac.drop }}{% else %}–{% endif %}</td>
+      <td data-label="Result"><span class="tag {{ row.ac.status }}">{{ row.ac.status|capfirst }}</span></td>
     </tr>
     {% endfor %}
   </tbody>
