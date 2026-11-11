@@ -49,7 +49,7 @@ class AuditFlowTests(TestCase):
 
     def test_login_is_required(self):
         self.client.logout()
-        for url in ("/", "/issues/", "/dashboard/", f"/audits/{self.audit.pk}/entry/"):
+        for url in ("/", "/issues/", "/dashboard/", f"/audits/{self.audit.pk}/bedroom/"):
             response = self.client.get(url)
             self.assertEqual(response.status_code, 302)
             self.assertIn("/login/", response["Location"])
@@ -77,9 +77,11 @@ class AuditFlowTests(TestCase):
 
     def test_every_zone_lists_every_item_with_nothing_preselected(self):
         counts = checklist.zone_counts(self.audit)
-        # entry: 3 + walls/floor/windows/trim/signage; no function checks
-        self.assertEqual(counts["entry"], (8, 8))
-        for zone in ("entry", "bedroom", "bathroom"):
+        self.assertEqual(list(counts), ["start", "bedroom", "bathroom"])
+        # bathroom: 9 fixtures (7 with a function check) + 7 building elements
+        self.assertEqual(counts["bathroom"], (23, 23))
+        self.assertEqual(self.client.get(f"/audits/{self.audit.pk}/entry/").status_code, 404)
+        for zone in ("bedroom", "bathroom"):
             response = self.client.get(f"/audits/{self.audit.pk}/{zone}/")
             self.assertEqual(response.status_code, 200)
             total = counts[zone][0]
@@ -99,6 +101,9 @@ class AuditFlowTests(TestCase):
         self.assertIn(("Mattress", "pest"), rows)
         self.assertNotIn(("Bed frame", "pest"), rows)
         self.assertIn(("TV", "function"), rows)
+        self.assertIn(("Mini fridge", "function"), rows)
+        self.assertIn(("Entry door", "condition"), rows)
+        self.assertIn(("Shower handle #2", "function"), rows)
         self.assertIn(("A/C", "function"), rows)
         self.assertNotIn(("A/C filter", "function"), rows)
         self.assertNotIn(("Towel rack", "function"), rows)
@@ -138,6 +143,69 @@ class AuditFlowTests(TestCase):
         self.assertNotContains(response, 'name="result_other"')
         self.assertEqual(Finding.objects.get().result_other, "")
 
+    def test_every_result_has_a_free_text_field(self):
+        key = self.key("Mirror")
+        for result in ("ok", "worn", "damaged", "missing", "not_working", "n_a"):
+            response = self.client.post(self.url, {"key": key, "result": result})
+            self.assertContains(response, 'name="notes"', count=1, msg_prefix=result)
+        self.client.post(self.url, {"key": key, "notes": "Not in this room"})
+        self.assertEqual(Finding.objects.get().notes, "Not in this room")
+
+    def test_not_applicable_is_an_answer_but_not_a_problem(self):
+        key = self.key("Mini fridge")
+        response = self.client.get(f"/audits/{self.audit.pk}/bedroom/")
+        self.assertContains(response, ">N/A</button>")
+        response = self.client.post(self.url, {"key": key, "result": "n_a"})
+        self.assertContains(response, "neutral selected")
+        self.assertNotContains(response, "Pick an action")
+        self.assertNotContains(response, "Unanswered")
+        # N/A is offered on condition checks only.
+        fail = self.client.post(self.url, {"key": self.key("TV", "function"), "result": "n_a"})
+        self.assertEqual(fail.status_code, 400)
+
+    def test_actions_offered_are_none_fix_now_work_order_capex(self):
+        key = self.key("TV")
+        response = self.client.post(self.url, {"key": key, "result": "damaged"})
+        for label in ("None", "Fix now", "Work order", "Capex"):
+            self.assertContains(response, f">{label}</button>")
+        self.assertNotContains(response, "Monitor")
+        bad = self.client.post(self.url, {"key": key, "action_bucket": "monitor"})
+        self.assertEqual(bad.status_code, 400)
+
+    def test_smell_is_checked_on_the_start_step(self):
+        response = self.client.get(f"/audits/{self.audit.pk}/start/")
+        self.assertContains(response, "Room smell")
+        self.assertContains(response, "1 unanswered")
+        for label in ("OK", "Musty", "Smoke", "Other"):
+            self.assertContains(response, f">{label}</button>")
+        self.client.post(self.url, {"key": "room-0-smell", "result": "ok"})
+        self.assertEqual(Issue.objects.count(), 0)
+        self.client.post(self.url, {"key": "room-0-smell", "result": "smoke"})
+        self.client.post(self.url, {"key": "room-0-smell", "action_bucket": "work_order"})
+        self.assertEqual(Finding.objects.count(), 1)
+        self.assertEqual(Issue.objects.get().title, "Room smell: Smoke")
+        response = self.client.get(f"/audits/{self.audit.pk}/start/")
+        self.assertContains(response, "bad selected", count=1)
+        self.assertNotContains(response, "1 unanswered")
+
+    def test_flooring_type_can_be_selected(self):
+        floor = self.room.building_elements.get(element="floor", zone="bedroom")
+        response = self.client.get(f"/audits/{self.audit.pk}/bedroom/")
+        self.assertContains(response, "Flooring type", count=1)
+        for option in ("Carpet", "Tile", "Tileboard"):
+            self.assertContains(response, f">{option}</button>")
+        url = f"/audits/{self.audit.pk}/flooring/{floor.pk}/"
+        response = self.client.post(url, {"material": "Carpet"})
+        self.assertContains(response, "bucket selected", count=1)
+        floor.refresh_from_db()
+        self.assertEqual(floor.material_or_finish, "Carpet")
+        self.assertEqual(self.client.post(url, {"material": "Lava"}).status_code, 400)
+        wall = self.room.building_elements.get(element="wall", zone="bedroom")
+        self.assertEqual(
+            self.client.post(f"/audits/{self.audit.pk}/flooring/{wall.pk}/", {"material": "Tile"}).status_code,
+            404,
+        )
+
     def test_squeak_and_bedbug_checks_are_pass_or_fail(self):
         response = self.client.get(f"/audits/{self.audit.pk}/bedroom/")
         self.assertContains(response, "Squeak test", count=2)
@@ -176,19 +244,43 @@ class AuditFlowTests(TestCase):
             self.assertEqual(self.client.post(self.url, {"key": key, "result": "ok"}).status_code, 404)
 
     def test_missing_expected_item_appears_and_can_be_marked_missing(self):
-        self.room.building_elements.filter(element="threshold").delete()
-        response = self.client.get(f"/audits/{self.audit.pk}/entry/")
+        self.room.building_elements.filter(element="counter").delete()
+        response = self.client.get(f"/audits/{self.audit.pk}/bathroom/")
         self.assertContains(response, "Expected, not in inventory")
-        key = self.key("Threshold", "presence")
+        key = self.key("Sink counter", "presence")
         self.client.post(self.url, {"key": key, "result": "missing"})
         self.client.post(self.url, {"key": key, "action_bucket": "work_order"})
-        self.assertEqual(Issue.objects.get().title, "Threshold (Entry): Missing")
+        self.assertEqual(Issue.objects.get().title, "Sink counter (Bathroom): Missing")
 
     def test_decor_is_added_during_the_audit(self):
         self.assertFalse(self.room.furnishings.filter(category="decor").exists())
         self.client.post(f"/audits/{self.audit.pk}/decor/", {"description": "Beach print"})
         self.assertEqual(self.room.furnishings.get(category="decor").name, "Beach print")
         self.assertContains(self.client.get(f"/audits/{self.audit.pk}/bedroom/"), "Beach print")
+
+    def test_added_decor_can_be_deleted(self):
+        self.client.post(f"/audits/{self.audit.pk}/decor/", {"description": "Beach print"})
+        decor = self.room.furnishings.get(category="decor")
+        key = self.key("Beach print")
+        self.client.post(self.url, {"key": key, "result": "damaged"})
+        self.client.post(self.url, {"key": key, "action_bucket": "fix_now"})
+        self.assertEqual(Issue.objects.count(), 1)
+        page = self.client.get(f"/audits/{self.audit.pk}/bedroom/")
+        self.assertContains(page, "Delete this item", count=1)  # only on decor
+
+        response = self.client.post(f"/audits/{self.audit.pk}/decor/{decor.pk}/delete/")
+        self.assertRedirects(
+            response, f"/audits/{self.audit.pk}/bedroom/#decor", fetch_redirect_response=False
+        )
+        self.assertFalse(self.room.furnishings.filter(category="decor").exists())
+        self.assertEqual((Finding.objects.count(), Issue.objects.count()), (0, 0))
+        self.assertNotContains(self.client.get(f"/audits/{self.audit.pk}/bedroom/"), "Beach print")
+
+    def test_only_decor_can_be_deleted_from_the_audit(self):
+        chair = self.room.furnishings.filter(category="chair").first()
+        response = self.client.post(f"/audits/{self.audit.pk}/decor/{chair.pk}/delete/")
+        self.assertEqual(response.status_code, 404)
+        self.assertEqual(self.room.furnishings.filter(category="chair").count(), 2)
 
     def test_start_step_saves_temperature_square_footage_and_first_reading(self):
         response = self.client.post(
@@ -201,7 +293,7 @@ class AuditFlowTests(TestCase):
                 "action": "continue",
             },
         )
-        self.assertRedirects(response, f"/audits/{self.audit.pk}/entry/")
+        self.assertRedirects(response, f"/audits/{self.audit.pk}/bedroom/")
         self.audit.refresh_from_db()
         self.room.refresh_from_db()
         self.assertEqual(self.audit.ambient_temperature_f, Decimal("71.5"))

@@ -12,7 +12,6 @@ from django.utils import timezone
 
 
 class Zone(models.TextChoices):
-    ENTRY = "entry", "Entry"
     BEDROOM = "bedroom", "Bedroom"
     BATHROOM = "bathroom", "Bathroom"
     EXTERIOR = "exterior", "Exterior"
@@ -50,6 +49,7 @@ class FixtureCategory(models.TextChoices):
     MIRROR = "mirror", "Mirror"
     SMOKE_DETECTOR = "smoke_detector", "Smoke detector"
     TOWEL_RACK = "towel_rack", "Towel rack"
+    MINI_FRIDGE = "mini_fridge", "Mini fridge"
     SHOWER_HANDLE = "shower_handle", "Shower handle"
     OTHER = "other", "Other"
 
@@ -74,6 +74,9 @@ CATEGORY_LABELS = {
     ItemKind.FIXTURE: dict(FixtureCategory.choices),
     ItemKind.BUILDING: dict(BuildingElementType.choices),
 }
+
+# Flooring types offered as one-tap choices during the audit.
+FLOORING_TYPES = ["Carpet", "Tile", "Tileboard"]
 
 # The A/C unit that the two supply-air readings are attached to is the HVAC
 # fixture with this name (the casing and filter are separate HVAC fixtures).
@@ -355,10 +358,12 @@ class CheckType(models.TextChoices):
     PRESENCE = "presence", "Presence"
     PEST = "pest", "Pest"
     NOISE = "noise", "Noise"
+    SMELL = "smell", "Smell"
     MEASUREMENT = "measurement", "Measurement"
 
 
 OTHER = "other"
+NOT_APPLICABLE = "n_a"
 
 # A short result option list per check type. Every list ends with Other,
 # which opens a free-text field.
@@ -369,6 +374,7 @@ RESULT_OPTIONS = {
         ("damaged", "Damaged"),
         ("missing", "Missing"),
         ("not_working", "Not working"),
+        (NOT_APPLICABLE, "N/A"),
         (OTHER, "Other"),
     ],
     CheckType.FUNCTION: [
@@ -387,11 +393,12 @@ RESULT_OPTIONS = {
     CheckType.PRESENCE: [("present", "Present"), ("missing", "Missing"), (OTHER, "Other")],
     CheckType.PEST: [("pass", "Pass"), ("fail", "Fail"), (OTHER, "Other")],
     CheckType.NOISE: [("pass", "Pass"), ("fail", "Fail"), (OTHER, "Other")],
+    CheckType.SMELL: [("ok", "OK"), ("musty", "Musty"), ("smoke", "Smoke"), (OTHER, "Other")],
     CheckType.MEASUREMENT: [],
 }
 
 # Results that mean "nothing wrong". Any other answered result is a problem.
-GOOD_RESULTS = {"ok", "working", "clean", "secure", "present", "pass"}
+GOOD_RESULTS = {"ok", "working", "clean", "secure", "present", "pass", NOT_APPLICABLE}
 
 RESULT_LABELS = {value: label for options in RESULT_OPTIONS.values() for value, label in options}
 
@@ -401,10 +408,9 @@ class ActionBucket(models.TextChoices):
     FIX_NOW = "fix_now", "Fix now"
     WORK_ORDER = "work_order", "Work order"
     CAPEX = "capex", "Capex"
-    MONITOR = "monitor", "Monitor"
 
 
-# Only these buckets create an Issue. "None" and "Monitor" stay on the Finding.
+# Only these buckets create an Issue. "None" stays on the Finding.
 ISSUE_BUCKETS = (ActionBucket.FIX_NOW, ActionBucket.WORK_ORDER, ActionBucket.CAPEX)
 
 AC_START_LABEL = "A/C supply air start"
@@ -415,9 +421,12 @@ AUTO_CLOSE_NOTE = "Closed automatically: the audit finding was changed and is no
 
 class Finding(models.Model):
     audit = models.ForeignKey(Audit, on_delete=models.CASCADE, related_name="findings")
-    target_kind = models.CharField(max_length=20, choices=ItemKind.choices)
-    # The target is exactly one of the three inventory records, or, for an item
-    # that the standard expects but the room does not have, the standard row.
+    target_kind = models.CharField(
+        max_length=20, choices=ItemKind.choices, blank=True, help_text="Blank for room-level checks."
+    )
+    # The target is one of the three inventory records, or, for an item that the
+    # standard expects but the room does not have, the standard row. Room-level
+    # checks (smell) have no target.
     furnishing = models.ForeignKey(
         Furnishing, on_delete=models.SET_NULL, null=True, blank=True, related_name="findings"
     )
@@ -465,6 +474,8 @@ class Finding(models.Model):
             return self.target.label
         if self.standard:
             return self.standard.name
+        if self.check_type == CheckType.SMELL:
+            return "Room smell"
         return "(removed item)"
 
     @property

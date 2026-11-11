@@ -13,6 +13,8 @@ from typing import Optional
 from .models import (
     AC_UNIT_NAME,
     GOOD_RESULTS,
+    NOT_APPLICABLE,
+    BuildingElementType,
     RESULT_OPTIONS,
     CheckType,
     Finding,
@@ -23,7 +25,10 @@ from .models import (
     Zone,
 )
 
-AUDIT_ZONES = [Zone.ENTRY, Zone.BEDROOM, Zone.BATHROOM]
+AUDIT_ZONES = [Zone.BEDROOM, Zone.BATHROOM]
+
+# The room-level smell check on the Start step.
+SMELL_KEY = "room-0-smell"
 
 CHECK_LABELS = {
     CheckType.CONDITION: "Condition",
@@ -31,6 +36,7 @@ CHECK_LABELS = {
     CheckType.NOISE: "Squeak test",
     CheckType.PEST: "Bedbug check",
     CheckType.PRESENCE: "Present?",
+    CheckType.SMELL: "Smell",
 }
 
 # Fixtures that get a "does it work" check on top of the condition check.
@@ -44,6 +50,7 @@ FUNCTION_CATEGORIES = {
     FixtureCategory.TOILET,
     FixtureCategory.SMOKE_DETECTOR,
     FixtureCategory.SHOWER_HANDLE,
+    FixtureCategory.MINI_FRIDGE,
 }
 SQUEAK_CATEGORIES = {FurnishingCategory.BED_FRAME, FurnishingCategory.MATTRESS}
 BEDBUG_CATEGORIES = {FurnishingCategory.MATTRESS}
@@ -74,6 +81,8 @@ def finding_key(finding):
     """The checklist key a saved finding answers, or None for measurements."""
     if finding.check_type == CheckType.MEASUREMENT:
         return None
+    if finding.check_type == CheckType.SMELL:
+        return SMELL_KEY
     for prefix, target_id in (
         ("furnishing", finding.furnishing_id),
         ("fixture", finding.fixture_id),
@@ -90,7 +99,7 @@ class CheckRow:
     key: str
     check_type: str
     target_kind: str
-    target_field: str
+    target_field: Optional[str]
     target: object
     finding: Optional[Finding] = None
 
@@ -108,19 +117,20 @@ class CheckRow:
 
     @property
     def buttons(self):
-        """(value, label, is_good) for each result option."""
-        return [
-            (value, label, value in GOOD_RESULTS)
-            for value, label in RESULT_OPTIONS[self.check_type]
-        ]
+        """(value, label, css class) for each result option."""
+
+        def css(value):
+            if value == NOT_APPLICABLE:
+                return "neutral"
+            return "good" if value in GOOD_RESULTS else "bad"
+
+        return [(value, label, css(value)) for value, label in RESULT_OPTIONS[self.check_type]]
 
     def get_or_build_finding(self, audit):
         if self.finding is None:
+            target = {self.target_field: self.target} if self.target_field else {}
             self.finding = Finding(
-                audit=audit,
-                target_kind=self.target_kind,
-                check_type=self.check_type,
-                **{self.target_field: self.target},
+                audit=audit, target_kind=self.target_kind, check_type=self.check_type, **target
             )
         return self.finding
 
@@ -131,6 +141,25 @@ class ItemEntry:
     note: str = ""
     absent: bool = False
     checks: list = field(default_factory=list)
+    item: object = None
+
+    @property
+    def is_floor(self):
+        """Flooring gets one-tap flooring type buttons."""
+        return (
+            self.item is not None
+            and self.item.kind == ItemKind.BUILDING
+            and self.item.element == BuildingElementType.FLOOR
+        )
+
+    @property
+    def can_delete(self):
+        """Decor is added during an audit, so it can be deleted there too."""
+        return (
+            self.item is not None
+            and self.item.kind == ItemKind.FURNISHING
+            and self.item.category == FurnishingCategory.DECOR
+        )
 
 
 def build_zone(audit, zone, findings=None):
@@ -157,7 +186,7 @@ def build_zone(audit, zone, findings=None):
             if totals[ident] > 1:
                 label = f"{label} #{seen[ident]}"
             field_name = TARGET_FIELDS[item.kind]
-            entry = ItemEntry(label=label, note=item.notes)
+            entry = ItemEntry(label=label, note=item.notes, item=item)
             for check in checks_for(item):
                 key = f"{field_name}-{item.id}-{check}"
                 entry.checks.append(
@@ -192,13 +221,22 @@ def build_zone(audit, zone, findings=None):
     return entries
 
 
+def smell_row(audit, findings=None):
+    """The room-level smell check shown on the Start step."""
+    if findings is None:
+        findings = {finding_key(f): f for f in audit.findings.all()}
+    return CheckRow(SMELL_KEY, CheckType.SMELL, "", None, None, findings.get(SMELL_KEY))
+
+
 def build_all(audit):
-    """{zone: [ItemEntry, ...]} for the three audited zones."""
+    """{zone: [ItemEntry, ...]} for the audited zones."""
     findings = {finding_key(f): f for f in audit.findings.all()}
     return {zone: build_zone(audit, zone, findings) for zone in AUDIT_ZONES}
 
 
 def find_row(audit, key):
+    if key == SMELL_KEY:
+        return smell_row(audit)
     for entries in build_all(audit).values():
         for entry in entries:
             for row in entry.checks:
@@ -208,8 +246,8 @@ def find_row(audit, key):
 
 
 def zone_counts(audit):
-    """{zone: (total checks, unanswered checks)}."""
-    counts = {}
+    """{step: (total checks, unanswered checks)} for Start and each zone."""
+    counts = {"start": (1, 0 if smell_row(audit).result else 1)}
     for zone, entries in build_all(audit).items():
         rows = [row for entry in entries for row in entry.checks]
         counts[zone] = (len(rows), sum(1 for row in rows if not row.result))

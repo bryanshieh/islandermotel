@@ -1,0 +1,13 @@
+<div class="check" id="mat-{{ item.pk }}">
+  <span class="check-label">Flooring type</span>
+  {% if not item.material_or_finish %}<span class="tag unanswered">Not set</span>{% endif %}
+  <div class="btn-row">
+    {% for option in flooring_types %}
+      <button type="button"
+              class="bucket {% if item.material_or_finish == option %}selected{% else %}outline secondary{% endif %}"
+              hx-post="{% url 'set_material' audit.pk item.pk %}"
+              hx-vals='{"material": "{{ option }}"}'
+              hx-target="#mat-{{ item.pk }}" hx-swap="outerHTML">{{ option }}</button>
+    {% endfor %}
+  </div>
+</div>

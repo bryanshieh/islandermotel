@@ -3,6 +3,11 @@
 {% block content %}
 {% include "audits/_audit_header.html" %}
 <h3>Start</h3>
+<div class="item">
+  <h4>Room smell</h4>
+  <div class="item-note">On walking in, before the A/C runs.</div>
+  {% with row=smell %}{% include "audits/_check.html" %}{% endwith %}
+</div>
 <form method="post">
   {% csrf_token %}
   {{ form.non_field_errors }}
@@ -27,7 +32,7 @@
   </article>
   <div class="grid">
     <button type="submit" name="action" value="save" class="outline">Save</button>
-    <button type="submit" name="action" value="continue">Save and go to Entry</button>
+    <button type="submit" name="action" value="continue">Save and go to Bedroom</button>
   </div>
 </form>
 {% endblock %}
