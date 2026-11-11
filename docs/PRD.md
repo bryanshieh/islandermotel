@@ -1,6 +1,6 @@
 # Islander Motel Room Audit App: PRD
 
-Nov 10, 2026 · Bryan
+Nov 10, 2026 · Bryan · revised Nov 11, 2026 after the first local test run (see "Revisions" at the end)
 
 ## Overview and goals
 
@@ -9,7 +9,7 @@ Build a small web app that records a condition audit of all 34 Islander Motel ro
 **Goals**
 
 - Capture every audit finding as structured data (item, result, bucket, optional photo), not free text.
-- Sort every problem into one of three buckets: fix now, work order, or capital refresh.
+- Sort every problem into one of three buckets: fix now, work order, or capital refresh (capex).
 - Keep each year's audit so a room's condition can be compared over time.
 - Keep entry fast: every item in a zone is listed up front with large, one-tap result buttons.
 
@@ -39,7 +39,7 @@ v1 covers the audit loop end to end: set up rooms, run an audit, triage issues, 
 | --- | --- |
 | Rooms and room types, with default inventory generated from the type | Offline mode |
 | Guided, zone-by-zone audit on a laptop or tablet | Phone-optimized layout |
-| Findings: condition, function, presence, measurements (A/C test) | Multiple users, roles, contractor access |
+| Findings: condition, function, presence, smell, measurements (A/C test) | Multiple users, roles, contractor access |
 | Optional photo on any finding | Per-room history view (data is kept, screen is not built) |
 | Issues with a light lifecycle: status, cost estimate, resolved date | Audit progress view (for example, 12 of 34 rooms done) |
 | Issue list with filters and CSV export | Full maintenance system: assignees, history, priorities beyond a field |
@@ -60,7 +60,7 @@ The first table lists scope and workflow decisions. The second lists the technic
 | Local database | SQLite for the test run, switch to Postgres when hosted |
 | Hosting | Run locally first |
 | Initial inventory | Auto-generated from room type, corrected during the first audit |
-| Audit flow | Guided, zone by zone; every item in a zone is listed, with no result pre-selected; audits can be saved mid-way, resumed later, and saved with unanswered items |
+| Audit flow | Guided, zone by zone (bedroom, then bathroom; there is no separate entry zone); every item in a zone is listed, with no result pre-selected; audits can be saved mid-way, resumed later, and saved with unanswered items |
 | Issues | Light lifecycle: status, cost estimate, resolved date |
 | Photos | Optional on any finding |
 | Outputs | Issue list with filters and CSV export; summary dashboard |
@@ -92,20 +92,18 @@ Inventory items hang off a Room, each Audit is one visit to a Room, and a Findin
 | RoomType | Property | name (SML, STD, LRG, XLRG), default square footage, notes |
 | Room | Property, RoomType | room number, floor, square footage, bed configuration, bathroom count, status (active, out of service, under renovation). One Room record is Storage, which holds inventory moving in and out of service and is not audited |
 | Furnishing | Room | category (bed frame, headboard, mattress, box spring, comforter, pillow, chair, table, dresser, decor, other), type or model, quantity, purchase date, purchase cost, expected life (years), status (in service, retired) |
-| Fixture | Room | category (HVAC, heater, TV, light, outlet, sink, shower, toilet, mirror, smoke detector, towel rack, shower handle, other), location (for example bedroom overhead), make or model, install date, last serviced, expected life (years), status |
-| BuildingElement | Room | element (floor, ceiling, wall or drywall, door, lock, hinge, window, trim, threshold, counter, signage, other), zone (bedroom, bathroom, entry, exterior), material or finish (for flooring: carpet, tile or tileboard), last refinished, notes |
+| Fixture | Room | category (HVAC, heater, TV, light, outlet, sink, shower, toilet, mirror, smoke detector, towel rack, shower handle, mini fridge, other), location (for example bedroom overhead), make or model, install date, last serviced, expected life (years), status |
+| BuildingElement | Room | element (floor, ceiling, wall or drywall, door, lock, hinge, window, trim, threshold, counter, signage, other), zone (bedroom, bathroom, exterior), material or finish (for flooring: carpet, tile or tileboard, picked during the audit), last refinished, notes |
 | RoomStandard | RoomType | item kind (furnishing, fixture, building), category or element, expected quantity |
 | Audit | Room | cycle (for example 2026 annual), audit type (annual, spot check, new inventory), audit date, auditor, start and end time, ambient temperature (°F), overall rating (1-4), overall notes |
-| Finding | Audit | target kind (furnishing, fixture, building), target, check type (condition, function, cleanliness, secure, presence, pest, noise, measurement), result (a short option list per check type, such as OK, worn, damaged, missing or not working, or pass or fail for the squeak and bedbug checks; every list ends with Other, which opens a free-text field), condition score (1-4), measurement label, measured value, unit, measured at, action bucket (none, fix now, work order, capex, monitor), photo, notes |
+| Finding | Audit | target kind (furnishing, fixture, building; empty for the room-level smell check), target, check type (condition, function, cleanliness, secure, presence, pest, noise, smell, measurement), result (a short option list per check type: OK, worn, damaged, missing, not working or N/A for condition; pass or fail for the squeak and bedbug checks; OK, musty or smoke for smell; every list ends with Other, and every result has a free-text field), condition score (1-4), measurement label, measured value, unit, measured at, action bucket (none, fix now, work order, capex), photo, notes |
 | Issue | Finding, Room | title, bucket (fix now, work order, capex), priority (low, medium, high, safety), status (open, scheduled, done, deferred), cost estimate, date opened, date resolved, resolution notes |
 
-**Default inventory per room** (from Bryan; the same list for all four types, with room 9 as the exception)
+**Default inventory per room** (from Bryan; the same list for all four types, with room 9 as the exception). There is no entry zone: every entry is a doorway into the bedroom, so the entry door is a bedroom item.
 
 | Zone | Item | Kind | Quantity | Notes |
 | --- | --- | --- | --- | --- |
-| Entry | Entry door | Building | 1 | Deadbolt, plus doorknob with lock |
-| Entry | Hinges | Building | 1 | |
-| Entry | Threshold | Building | 1 | |
+| Bedroom | Entry door | Building | 1 | Deadbolt, plus doorknob with lock; hinges and threshold are assessed as part of the door |
 | Bedroom | Bed frame | Furnishing | 1 | Queen; 2 in room 9 |
 | Bedroom | Headboard | Furnishing | 1 | Queen; 2 in room 9 |
 | Bedroom | Mattress | Furnishing | 1 | Queen; 2 in room 9 |
@@ -127,19 +125,24 @@ Inventory items hang off a Room, each Audit is one visit to a Room, and a Findin
 | Bedroom | Pillow | Furnishing | 2 | 4 in room 9 only |
 | Bedroom | Outlets | Fixture | 2 | Varies with room and zone |
 | Bedroom | Smoke detector | Fixture | 1 | |
+| Bedroom | Mini fridge | Fixture | 1 | |
 | Bathroom | Light | Fixture | 1 | |
 | Bathroom | Mirror | Fixture | 1 | |
 | Bathroom | Toilet | Fixture | 1 | |
 | Bathroom | Sink | Fixture | 1 | |
 | Bathroom | Sink counter | Building | 1 | |
-| Bathroom | Shower | Fixture | 1 | Shower head and 2 nozzles |
-| Bathroom | Shower handle | Fixture | 1 | |
+| Bathroom | Shower | Fixture | 1 | Shower head |
+| Bathroom | Shower handle | Fixture | 2 | Hot and cold |
 | Bathroom | Towel rack | Fixture | 1 | |
-| All zones | Walls | Building | One per zone | |
-| All zones | Flooring | Building | One per zone | Carpet, tile or tileboard; type differs by zone |
-| All zones | Windows | Building | One per zone | |
-| All zones | Trim | Building | One per zone | |
-| All zones | Signage | Building | Assorted | For example no smoking, do not flush tampons |
+| Bathroom | Outlets | Fixture | 1 | Varies with room |
+| Both zones | Walls | Building | One per zone | |
+| Both zones | Flooring | Building | One per zone | Carpet, tile or tileboard; type differs by zone and is picked during the audit |
+| Both zones | Windows | Building | One per zone | |
+| Both zones | Trim | Building | One per zone | |
+| Both zones | Ceiling | Building | One per zone | |
+| Both zones | Signage | Building | One per zone | For example no smoking, do not flush tampons; corrected per room |
+
+"Both zones" means bedroom and bathroom. Each guest room starts with 48 inventory records (55 in room 9).
 
 **Rooms** (from Bryan; square footage is recorded on the first audit; rooms 9, 10 and 201-210 are on the second floor and all others are on the first)
 
@@ -153,27 +156,28 @@ Inventory items hang off a Room, each Audit is one visit to a Room, and a Findin
 
 **How the pieces work together**
 
-- **Inventory generation.** When a Room is created, the app copies its RoomType's RoomStandard rows into Furnishing, Fixture and BuildingElement records. Each unit becomes its own record (two chairs make two records), so every unit gets its own finding; walls, flooring, windows and trim get one record per zone. Bryan corrects exceptions during the first audit, such as room 9 with two queen beds. New inventory that comes online later is added to the same Furnishing, Fixture or Building tables and can be audited right away.
-- **Missing items.** A missing threshold is found by comparing a room against its standard: the element is expected, so a Finding with result "missing" is raised.
+- **Inventory generation.** When a Room is created, the app copies its RoomType's RoomStandard rows into Furnishing, Fixture and BuildingElement records. Each unit becomes its own record (two chairs make two records), so every unit gets its own finding; walls, flooring, windows, trim, ceiling and signage get one record per zone (bedroom and bathroom). Bryan corrects exceptions during the first audit, such as room 9 with two queen beds. New inventory that comes online later is added to the same Furnishing, Fixture or Building tables and can be audited right away.
+- **Missing items.** A missing sink counter is found by comparing a room against its standard: the element is expected, so a Finding with result "missing" is raised.
 - **A/C test.** The test is two measurement Findings on the room's A/C fixture, one at the start and one at the end, each with a value, unit and timestamp. Elapsed time and temperature drop are calculated, not entered. A room passes when supply-air temperature drops at least 20°F within 10 minutes; rooms that miss are flagged.
-- **Issues only for problems.** A Finding with action bucket "none" creates no Issue, so the issue list stays short.
+- **Issues only for problems.** A Finding with action bucket "none" creates no Issue, so the issue list stays short. A result of N/A is an answer, not a problem.
+- **Smell.** One room-level Finding per audit, recorded on the Start step. It has no inventory target; a problem smell can open an Issue like any other finding.
+- **Flooring type** is a property of the flooring record (material or finish), not of the audit. It is picked with one tap on the flooring item during the audit.
 - **Ambient temperature** lives on the Audit because it is context for the whole visit.
 
 ## Audit flow
 
 The audit walks the room in the order Bryan physically moves through it, and each zone lists every item to be answered. No result is pre-selected.
 
-1. **Start.** Pick the room, record ambient temperature, start the A/C and log the first supply-air reading with its time. On the first audit only, also measure the room and record its square footage on the Room.
-2. **Entry zone.** Door, locks, hinges, threshold.
-3. **Bedroom zone.** Lights, outlets, TV, A/C casing and filter, heater pilot, bed and bedding (squeak test of the frame and mattress, bedbug check), chairs, table, dresser, decor (counted on the first audit, with a record added for each piece), floor, ceiling, walls, windows, trim, and the door, locks, hinges and threshold if the bedroom has its own door.
-4. **Bathroom zone.** Sink, shower, toilet, lights, mirror, floor, ceiling, and the door, locks, hinges and threshold if the bathroom has its own door.
-5. **Wrap-up.** Log the second A/C reading with its time, give an overall rating (1-4), and add notes.
-6. **Save.** Each problem logged on the way becomes an Issue; everything marked OK stays a plain record.
+1. **Start.** Pick the room, note the smell on walking in (OK, musty, smoke, Other), record ambient temperature, start the A/C and log the first supply-air reading with its time. On the first audit only, also measure the room and record its square footage on the Room.
+2. **Bedroom zone.** Entry door (including its locks, hinges and threshold), lights, outlets, TV, mini fridge, A/C casing and filter, heater pilot, bed and bedding (squeak test of the frame and mattress, bedbug check), chairs, table, dresser, decor (counted on the first audit, with a record added for each piece; a piece added this way can also be deleted from the same screen), floor and its flooring type, ceiling, walls, windows, trim, signage.
+3. **Bathroom zone.** Sink, shower and its two handles, toilet, lights, mirror, outlets, towel rack, floor and its flooring type, ceiling, walls, windows, trim, signage.
+4. **Wrap-up.** Log the second A/C reading with its time, give an overall rating (1-4), and add notes.
+5. **Save.** Each problem logged on the way becomes an Issue; everything marked OK stays a plain record.
 
 **Rules inside each zone**
 
 - Every item in the zone is listed, and no result is pre-selected.
-- The list comes from the room's inventory and standard. For each item, Bryan picks a result from that item's short option list (each list ends with "Other", which opens a free-text field); for problem items he also sets an action bucket and can add a photo and a note.
+- The list comes from the room's inventory and standard. For each item, Bryan picks a result from that item's short option list (condition lists include N/A; each list ends with "Other"). Every result has a free-text field, shown as soon as a result is picked; for Other it holds the description. For problem items he also sets an action (none, fix now, work order, capex) and can add a photo.
 - Items that are expected but absent (from the room's standard) appear in the list so they can be marked missing.
 - A/C start and end readings are recorded as measurements. An audit can be saved at any point and resumed later, including with items still unanswered, which stay marked as unanswered.
 
@@ -191,7 +195,7 @@ Every problem found in an audit becomes an Issue in one of three buckets, with a
 
 - **Status:** open, scheduled, done, deferred.
 - **Fields editable on an issue:** priority (low, medium, high, safety), cost estimate, date resolved, resolution notes.
-- **Monitor** is a Finding-level bucket for things to watch next year; it does not create an Issue.
+- **None** is a Finding-level action for a problem that needs nothing done; it does not create an Issue. (The earlier "monitor" action was removed.)
 - **Out of v1:** assignees, status history and cost actuals.
 
 **Keeping issues in step with audits.** If a finding is edited after it is saved, for example from damaged to OK, its Issue is updated or closed to match. A new audit cycle opens new Issues, even for an item that is still broken from last year.
@@ -231,7 +235,7 @@ Django makes sense here: its models map almost one-to-one onto the entities abov
 | --- | --- | --- |
 | 0. Setup | Django project, SQLite, login, base template and CSS | Logs in on the laptop |
 | 1. Data model | All entities, migrations, admin screens, RoomStandard-based inventory generation | All 35 rooms (34 guest rooms plus Storage) exist; guest rooms have generated inventory, visible in admin |
-| 2. Audit flow | Zone-by-zone audit screens, findings, A/C measurements, optional photos | A full room audit can be saved from the laptop |
+| 2. Audit flow | Zone-by-zone audit screens, findings, smell check, A/C measurements, optional photos | A full room audit can be saved from the laptop |
 | 3. Issues | Issues created from findings, issue list with filters, status editing, CSV export | A filtered issue list exports to CSV |
 | 4. Dashboard | Issue counts by bucket and room type, A/C results table | Dashboard totals match the issue list |
 | 5. Test run | Audit a handful of rooms for real, log what slowed down or broke | List of fixes and a decision on hosting |
@@ -253,3 +257,16 @@ Phase 1 depends on knowing the room types and their default inventory; phases 2 
 - [x] What are the per-room quantities for the items marked "To confirm" in the default inventory table?
 - [x] Confirm the technical decisions table.
 - [ ] After the first audit, remove the square footage and decor-count steps from the audit flow; both are one-time setup captures.
+
+## Revisions
+
+**Nov 11, 2026, after the first local test run** (phases 0 to 4 built)
+
+- Removed the entry zone. Every entry is a doorway into the bedroom, so a separate zone duplicated the bedroom's walls, flooring, windows, trim and signage. "Entry door" is now a bedroom item and covers its locks, hinges and threshold.
+- Added a smell check to the Start step.
+- Added N/A to the condition results.
+- Every result now has a free-text field, not only Other.
+- Actions are none, fix now, work order and capex. Monitor was removed.
+- Flooring type (carpet, tile or tileboard) is picked on each flooring item during the audit.
+- Default inventory: added a mini fridge to the bedroom and outlets to the bathroom; the shower has a shower head and two handles (hot and cold), not two nozzles; ceilings and signage are one per zone.
+- Decor pieces added during an audit can be deleted from the same screen.

@@ -4,7 +4,8 @@ An internal web app that records a yearly condition audit of the Islander
 Motel's 34 guest rooms and turns the findings into a prioritized fix list.
 The product spec is [docs/PRD.md](docs/PRD.md). This build covers PRD phases
 0 to 4: setup, data model, audit flow, issues and dashboard, plus the changes
-Bryan asked for after the first test run (listed under "Changes from the PRD").
+Bryan asked for after the first test run (listed under "Changes from the
+first PRD").
 
 Stack: Django 5.2, SQLite, Django admin and built-in login, server-rendered
 templates with HTMX, and Pico CSS. HTMX and Pico load from a CDN, so the
@@ -80,10 +81,10 @@ cp -R media ~/Backups/islander-media-$(date +%F)
 To restore, stop the server and copy both back into place. Keep the two
 together: the database stores the file names of the photos.
 
-## Changes from the PRD
+## Changes from the first PRD
 
-Asked for by Bryan after the first test run. Where these differ from
-`docs/PRD.md`, the app follows this list; the PRD itself has not been edited.
+Asked for by Bryan after the first test run. `docs/PRD.md` has been revised to
+match and lists them under "Revisions".
 
 - **No entry zone.** The audit steps are Start, Bedroom, Bathroom, Wrap-up.
   "Entry door" is a bedroom item and covers its hinges, locks and threshold,
