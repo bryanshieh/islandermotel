@@ -11,6 +11,9 @@ Stack: Django 5.2, SQLite, Django admin and built-in login, server-rendered
 templates with HTMX, and Pico CSS. HTMX and Pico load from a CDN, so the
 browser needs internet access. There is no JavaScript build step.
 
+The app is self-hosted: it runs on the laptop, and a phone or tablet can use
+it over wifi (see "Use it from your phone").
+
 ## Run it locally
 
 You need Python 3.10 or newer. From the repository folder:
@@ -29,6 +32,71 @@ python manage.py runserver
 Then open http://127.0.0.1:8000/ and log in.
 
 `seed_motel` is safe to run again: it only adds what is missing.
+
+After pulling a new version, run `pip install -r requirements.txt` and
+`python manage.py migrate` again before starting the app.
+
+## Use it from your phone
+
+The laptop is the server and the phone is the screen. Nothing is hosted
+online, so it costs nothing, and it works whenever the laptop is on, awake
+and running the app.
+
+### On the same wifi
+
+1. On the laptop, start the app with this command instead of `runserver`:
+
+   ```bash
+   python manage.py serve_phone
+   ```
+
+2. It prints an address such as `http://192.168.1.23:8000/`. Type that into
+   the phone's browser and log in. The address can change from day to day, so
+   read it off the laptop each session.
+3. Leave the terminal window open. Press Ctrl+C to stop.
+
+If the phone cannot load the page:
+
+- macOS may ask whether to allow incoming connections the first time. Choose
+  Allow.
+- Check that both devices are on the same wifi network. Guest networks often
+  stop devices from talking to each other; if the motel's does, use Tailscale
+  below.
+- Keep the laptop awake. On a Mac, run `caffeinate -s` in a second terminal
+  window while auditing.
+
+### From anywhere, with Tailscale
+
+[Tailscale](https://tailscale.com) is a free app that links your own devices
+privately. Use it when the wifi blocks device-to-device traffic or when you
+are away from the motel.
+
+1. Install Tailscale on the laptop and on the phone, and sign in to the same
+   account on both.
+2. Start the app with `python manage.py serve_phone`.
+3. On the phone, open `http://<laptop-name>.<your-tailnet>.ts.net:8000/`. The
+   Tailscale app shows the laptop's full name. This address does not change.
+4. To use the laptop's Tailscale number instead of its name, start the app
+   with `python manage.py serve_phone --host 100.x.y.z`.
+
+### Safety on shared wifi
+
+- `serve_phone` makes the app reachable by every device on the same network.
+  The login still protects it, and photos need a login too, so use a strong
+  password.
+- Over plain wifi the connection is not encrypted, so someone on the same
+  network with the right tools could read the password as you log in. Do not
+  use `serve_phone` on the guest wifi. Tailscale encrypts the connection and
+  is the safer choice.
+- `runserver` only answers the laptop itself. Use it when you do not need the
+  phone.
+
+### Photos from the phone
+
+On a problem item, open "Photo (optional)" and tap "Choose File"; the phone
+offers the camera or the photo library. Photos are shrunk to 1600 pixels on
+the longest side and saved as JPEG (a 10 MB photo becomes well under 1 MB),
+turned upright, and stored in `media/` on the laptop.
 
 To run the automated tests:
 
@@ -70,6 +138,9 @@ All data lives in two places in the repository folder, and neither is in Git:
 - `db.sqlite3`: the database (rooms, audits, findings, issues).
 - `media/`: the photos attached to findings.
 
+(`.secret_key` is also created there on first run. It does not need backing
+up: if it is lost the app makes a new one and you log in again.)
+
 Stop the server, then copy both to another location (an external drive or a
 cloud folder) from time to time, and always before upgrading the app:
 
@@ -106,6 +177,14 @@ match and lists them under "Revisions".
   added, corrected or retired in Admin.
 
 Each guest room now starts with 48 inventory records (55 in room 9).
+
+Added on Nov 11 after Bryan chose self-hosting over a paid or free host:
+
+- **Phone layout.** Screens work at phone width: buttons fill the row, the
+  menu and step buttons wrap, and tables turn into one card per row.
+- **Self-hosted phone access** through `serve_phone` (same wifi or Tailscale),
+  in place of the PRD's hosted deployment, which stays deferred.
+- **Photos are shrunk on upload**, and a new photo replaces the old file.
 
 ## Assumptions
 
@@ -211,8 +290,19 @@ Points confirmed with Bryan are marked as such.
     from earlier audits the same way.
 33. The smell check counts toward the Start step's unanswered total. Flooring
     type does not count as an unanswered item.
+34. `serve_phone` runs the app with the Waitress server and DEBUG off, and
+    accepts the laptop's own network addresses, any Tailscale `.ts.net` name,
+    and anything passed with `--host`. Static files for the admin are served
+    by WhiteNoise.
+35. Photos are stored at up to 1600 pixels on the longest side, JPEG quality
+    80. The original full-size file is not kept. HEIC photos are not read
+    directly; iPhones normally convert to JPEG when uploading through the
+    browser, and a file the app cannot read shows an error instead of saving.
+36. The phone layout applies below 600 pixels wide. Tablet and laptop layouts
+    are unchanged.
 
 ## Not in v1
 
-Per the PRD: offline mode, phone layout, multiple users or roles, a per-room
-history view, an audit progress view, and hosted deployment.
+Per the PRD: offline mode, multiple users or roles, a per-room history view,
+an audit progress view, and hosted deployment (the app is self-hosted on the
+laptop instead).

@@ -1,6 +1,7 @@
 import csv
 from collections import Counter
 
+from django.conf import settings
 from django.contrib import messages
 from django.contrib.auth.decorators import login_required
 from django.http import Http404, HttpResponse, HttpResponseBadRequest
@@ -8,9 +9,11 @@ from django.shortcuts import get_object_or_404, redirect, render
 from django.urls import reverse
 from django.utils import timezone
 from django.views.decorators.http import require_POST
+from django.views.static import serve as static_serve
 
 from . import checklist
 from .ac import ac_result, reading, set_reading
+from .photos import NotAPhoto, shrink_photo
 from .forms import DecorForm, IssueForm, NewAuditForm, StartForm, WrapUpForm
 from .models import (
     AC_END_LABEL,
@@ -251,14 +254,27 @@ def finding_update(request, pk):
         finding.notes = request.POST["notes"].strip()
     if request.POST.get("remove_photo") and finding.photo:
         finding.photo.delete(save=False)
+    photo_error = ""
     if "photo" in request.FILES:
-        finding.photo = request.FILES["photo"]
+        try:
+            photo = shrink_photo(request.FILES["photo"])
+        except NotAPhoto:
+            photo_error = "That file is not a photo the app can read. Try a JPEG or PNG."
+        else:
+            if finding.photo:
+                finding.photo.delete(save=False)  # replace, do not pile up files
+            finding.photo = photo
     finding.save()
 
     return render(
         request,
         "audits/_check.html",
-        {"audit": audit, "row": row, "buckets": ActionBucket.choices},
+        {
+            "audit": audit,
+            "row": row,
+            "buckets": ActionBucket.choices,
+            "photo_error": photo_error,
+        },
     )
 
 
@@ -311,6 +327,12 @@ def set_material(request, pk, item_pk):
         "audits/_material.html",
         {"audit": audit, "item": item, "flooring_types": FLOORING_TYPES},
     )
+
+
+@login_required
+def media(request, path):
+    """Serve a finding photo from the media folder to a logged-in user."""
+    return static_serve(request, path, document_root=settings.MEDIA_ROOT)
 
 
 def to_int(value):
