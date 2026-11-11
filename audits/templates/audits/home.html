@@ -1,0 +1,36 @@
+{% extends "base.html" %}
+{% block title %}Audits{% endblock %}
+{% block content %}
+<h2>Start an audit</h2>
+<form method="post">
+  {% csrf_token %}
+  <div class="grid">
+    <label>Room {{ form.room }}</label>
+    <label>Audit type {{ form.audit_type }}</label>
+    <label>Cycle year {{ form.cycle_year }}</label>
+  </div>
+  {% if form.errors %}<p style="color:#c62828">Pick a room and a cycle year.</p>{% endif %}
+  <button type="submit">Start audit</button>
+</form>
+
+<h2>Saved audits</h2>
+{% if audits %}
+<table>
+  <thead><tr><th>Room</th><th>Type</th><th>Cycle</th><th>Date</th><th>State</th><th></th></tr></thead>
+  <tbody>
+  {% for audit in audits %}
+    <tr>
+      <td>{{ audit.room.number }}</td>
+      <td>{{ audit.room.room_type }}</td>
+      <td>{{ audit.cycle }}</td>
+      <td>{{ audit.audit_date|date:"M j, Y" }}</td>
+      <td>{% if audit.is_finished %}Finished{% else %}In progress{% endif %}</td>
+      <td><a href="{% url 'audit_step' audit.pk 'start' %}">{% if audit.is_finished %}Open{% else %}Resume{% endif %}</a></td>
+    </tr>
+  {% endfor %}
+  </tbody>
+</table>
+{% else %}
+<p>No audits yet.</p>
+{% endif %}
+{% endblock %}

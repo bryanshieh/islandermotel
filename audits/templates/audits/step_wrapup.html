@@ -1,0 +1,53 @@
+{% extends "base.html" %}
+{% block title %}Room {{ room.number }}: Wrap-up{% endblock %}
+{% block content %}
+{% include "audits/_audit_header.html" %}
+<h3>Wrap-up</h3>
+<form method="post">
+  {% csrf_token %}
+  {{ form.non_field_errors }}
+  <article>
+    <h4>A/C test: second reading</h4>
+    <div class="grid">
+      <label>{{ form.ac_end_value.label }} {{ form.ac_end_value }}</label>
+      <label>{{ form.ac_end_time.label }} {{ form.ac_end_time }}
+        <small>Leave empty to use the time you press Save.</small></label>
+    </div>
+    {{ form.ac_end_value.errors }}{{ form.ac_end_time.errors }}
+    <table>
+      <thead><tr><th>First reading</th><th>Second reading</th><th>Elapsed</th><th>Drop</th><th>Result</th></tr></thead>
+      <tbody><tr>
+        <td>{% if ac.start_value is not None %}{{ ac.start_value }}°F at {{ ac.start_at|date:"g:i A" }}{% else %}Not logged{% endif %}</td>
+        <td>{% if ac.end_value is not None %}{{ ac.end_value }}°F at {{ ac.end_at|date:"g:i A" }}{% else %}Not logged{% endif %}</td>
+        <td>{% if ac.complete %}{{ ac.elapsed_minutes }} min{% else %}–{% endif %}</td>
+        <td>{% if ac.complete %}{{ ac.drop }}°F{% else %}–{% endif %}</td>
+        <td><span class="tag {{ ac.status }}">{{ ac.status|capfirst }}</span></td>
+      </tr></tbody>
+    </table>
+    <small>Pass: a drop of at least 20°F within 10 minutes. Calculated from the two saved readings.</small>
+  </article>
+
+  <fieldset class="rating">
+    <legend>{{ form.overall_rating.label }} (1 to 4)</legend>
+    {% for radio in form.overall_rating %}<label>{{ radio.tag }} {{ radio.choice_label }}</label>{% endfor %}
+  </fieldset>
+  <label>{{ form.overall_notes.label }} {{ form.overall_notes }}</label>
+
+  {% if unanswered_total %}
+    <p><span class="tag unanswered">{{ unanswered_total }} item{{ unanswered_total|pluralize }} unanswered</span>
+       You can still save; they stay marked unanswered.</p>
+  {% endif %}
+
+  <div class="grid">
+    <button type="submit" name="action" value="save" class="outline">Save</button>
+    <button type="submit" name="action" value="finish">Save and finish audit</button>
+  </div>
+</form>
+
+<h4>Issues from this audit: {{ issues|length }}</h4>
+{% if issues %}
+<ul>
+  {% for issue in issues %}<li>{{ issue.title }} · {{ issue.get_bucket_display }} · {{ issue.get_status_display }}</li>{% endfor %}
+</ul>
+{% endif %}
+{% endblock %}

@@ -1,0 +1,28 @@
+{% extends "base.html" %}
+{% block title %}Edit issue{% endblock %}
+{% block content %}
+<hgroup>
+  <h2>Room {{ issue.room.number }}: {{ issue.title }}</h2>
+  <p>{{ issue.get_bucket_display }} · {{ issue.finding.audit.cycle }} audit · opened {{ issue.date_opened|date:"M j, Y" }}</p>
+</hgroup>
+{% if issue.finding.notes %}<p><strong>Audit note:</strong> {{ issue.finding.notes }}</p>{% endif %}
+{% if issue.finding.photo %}<p><a href="{{ issue.finding.photo.url }}" target="_blank"><img class="thumb" src="{{ issue.finding.photo.url }}" alt="Finding photo"></a></p>{% endif %}
+<form method="post">
+  {% csrf_token %}
+  {{ form.non_field_errors }}
+  <div class="grid">
+    <label>Status {{ form.status }}</label>
+    <label>Priority {{ form.priority }}</label>
+  </div>
+  <div class="grid">
+    <label>Cost estimate ($) {{ form.cost_estimate }} {{ form.cost_estimate.errors }}</label>
+    <label>Date resolved {{ form.date_resolved }} {{ form.date_resolved.errors }}</label>
+  </div>
+  <label>Resolution notes {{ form.resolution_notes }}</label>
+  <p><small>The bucket and title come from the audit finding. To change them, edit the finding in the audit.</small></p>
+  <div class="grid">
+    <a role="button" class="outline" href="{{ back }}">Cancel</a>
+    <button type="submit">Save issue</button>
+  </div>
+</form>
+{% endblock %}
