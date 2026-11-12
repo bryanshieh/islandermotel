@@ -333,9 +333,17 @@ class Audit(models.Model):
         null=True, blank=True, validators=[MinValueValidator(1), MaxValueValidator(4)]
     )
     overall_notes = models.TextField(blank=True)
+    # One optional general photo per zone. Like ambient temperature, it is
+    # context for the visit, so it lives on the Audit.
+    bedroom_photo = models.ImageField(upload_to="zones/%Y/", null=True, blank=True)
+    bathroom_photo = models.ImageField(upload_to="zones/%Y/", null=True, blank=True)
 
     class Meta:
         ordering = ["-audit_date", "-id"]
+
+    def zone_photo(self, zone):
+        """The general photo for a zone ("bedroom" or "bathroom")."""
+        return getattr(self, f"{zone}_photo")
 
     def __str__(self):
         return f"{self.room} – {self.cycle}"

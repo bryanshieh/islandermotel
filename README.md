@@ -185,6 +185,9 @@ Added on Nov 11 after Bryan chose self-hosting over a paid or free host:
 - **Self-hosted phone access** through `serve_phone` (same wifi or Tailscale),
   in place of the PRD's hosted deployment, which stays deferred.
 - **Photos are shrunk on upload**, and a new photo replaces the old file.
+- **One optional general photo per zone** (bedroom and bathroom), added at the
+  top of each zone's screen. It is saved on the audit, in `media/zones/`, and
+  does not count as an unanswered item or open an issue.
 
 ## Assumptions
 

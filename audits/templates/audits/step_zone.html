@@ -3,6 +3,7 @@
 {% block content %}
 {% include "audits/_audit_header.html" %}
 <h3>{{ zone.label }}</h3>
+{% include "audits/_zone_photo.html" %}
 {% for entry in entries %}
   <div class="item">
     <h4>{{ entry.label }}{% if entry.absent %} <span class="tag unanswered">Expected, not in inventory</span>{% endif %}</h4>

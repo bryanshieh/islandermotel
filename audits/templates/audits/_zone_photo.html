@@ -1,0 +1,17 @@
+{% url 'zone_photo' audit.pk zone as zone_photo_url %}
+<div class="item" id="zone-photo">
+  <h4>General photo of the {{ zone.label|lower }} <small>(optional)</small></h4>
+  {% if photo_error %}<p><span class="tag fail">{{ photo_error }}</span></p>{% endif %}
+  {% if zone_photo %}
+    <p>
+      <a href="{{ zone_photo.url }}" target="_blank"><img class="thumb" src="{{ zone_photo.url }}" alt="General photo of the {{ zone.label|lower }}"></a>
+      <button type="button" class="outline secondary" style="width:auto;margin-left:.5rem"
+              hx-post="{{ zone_photo_url }}" hx-vals='{"remove_photo": "1"}'
+              hx-target="#zone-photo" hx-swap="outerHTML">Remove photo</button>
+    </p>
+  {% endif %}
+  <form hx-post="{{ zone_photo_url }}" hx-encoding="multipart/form-data" hx-trigger="change"
+        hx-target="#zone-photo" hx-swap="outerHTML" style="margin:0">
+    <input type="file" name="photo" accept="image/*" aria-label="General photo of the {{ zone.label|lower }}" style="margin-bottom:0">
+  </form>
+</div>

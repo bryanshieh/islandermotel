@@ -176,6 +176,42 @@ def zone_step(request, audit, step):
             "decor_form": DecorForm() if zone == Zone.BEDROOM else None,
             "flooring_types": FLOORING_TYPES,
             "buckets": ActionBucket.choices,
+            "zone_photo": audit.zone_photo(zone),
+        },
+    )
+
+
+@login_required
+@require_POST
+def zone_photo(request, pk, zone):
+    """Add, replace or remove the optional general photo of a zone."""
+    audit = get_object_or_404(Audit, pk=pk)
+    if zone not in checklist.AUDIT_ZONES:
+        raise Http404
+    zone = Zone(zone)
+    field = f"{zone}_photo"
+    current = getattr(audit, field)
+    photo_error = ""
+    if request.POST.get("remove_photo") and current:
+        current.delete(save=False)
+    if "photo" in request.FILES:
+        try:
+            photo = shrink_photo(request.FILES["photo"])
+        except NotAPhoto:
+            photo_error = "That file is not a photo the app can read. Try a JPEG or PNG."
+        else:
+            if current:
+                current.delete(save=False)  # replace, do not pile up files
+            setattr(audit, field, photo)
+    audit.save()
+    return render(
+        request,
+        "audits/_zone_photo.html",
+        {
+            "audit": audit,
+            "zone": zone,
+            "zone_photo": audit.zone_photo(zone),
+            "photo_error": photo_error,
         },
     )
 

@@ -96,7 +96,7 @@ Inventory items hang off a Room, each Audit is one visit to a Room, and a Findin
 | Fixture | Room | category (HVAC, heater, TV, light, outlet, sink, shower, toilet, mirror, smoke detector, towel rack, shower handle, mini fridge, other), location (for example bedroom overhead), make or model, install date, last serviced, expected life (years), status |
 | BuildingElement | Room | element (floor, ceiling, wall or drywall, door, lock, hinge, window, trim, threshold, counter, signage, other), zone (bedroom, bathroom, exterior), material or finish (for flooring: carpet, tile or tileboard, picked during the audit), last refinished, notes |
 | RoomStandard | RoomType | item kind (furnishing, fixture, building), category or element, expected quantity |
-| Audit | Room | cycle (for example 2026 annual), audit type (annual, spot check, new inventory), audit date, auditor, start and end time, ambient temperature (°F), overall rating (1-4), overall notes |
+| Audit | Room | cycle (for example 2026 annual), audit type (annual, spot check, new inventory), audit date, auditor, start and end time, ambient temperature (°F), overall rating (1-4), overall notes, optional general photo of the bedroom and of the bathroom |
 | Finding | Audit | target kind (furnishing, fixture, building; empty for the room-level smell check), target, check type (condition, function, cleanliness, secure, presence, pest, noise, smell, measurement), result (a short option list per check type: OK, worn, damaged, missing, not working or N/A for condition; pass or fail for the squeak and bedbug checks; OK, musty or smoke for smell; every list ends with Other, and every result has a free-text field), condition score (1-4), measurement label, measured value, unit, measured at, action bucket (none, fix now, work order, capex), photo, notes |
 | Issue | Finding, Room | title, bucket (fix now, work order, capex), priority (low, medium, high, safety), status (open, scheduled, done, deferred), cost estimate, date opened, date resolved, resolution notes |
 
@@ -278,3 +278,7 @@ Phase 1 depends on knowing the room types and their default inventory; phases 2 
 - Phone layout moved into scope. The phone is the main device for walking rooms.
 - Hosting decision: self-hosted on the laptop, reached from the phone over the same wifi or Tailscale. Free cloud tiers were ruled out and a paid host (about $8 a month) is deferred until always-on access is wanted.
 - Photos taken on the phone are shrunk to 1600 px JPEG on upload and need a login to view.
+
+**Nov 12, 2026, zone photos**
+
+- Each zone (bedroom, bathroom) can have one optional general photo per audit, for an overall view of the room's state. It is stored on the Audit, is not a finding, and does not open an Issue.
