@@ -4,6 +4,18 @@
 {% include "audits/_audit_header.html" %}
 <h3>{{ zone.label }}</h3>
 {% include "audits/_zone_photo.html" %}
+{% if show_noise %}
+  <div class="item" id="noise-inside">
+    <h4>Peak noise inside <small>(optional)</small></h4>
+    <div class="item-note">Highest reading on the sound meter, measured from the bed.</div>
+    <input type="number" name="value" step="0.1" min="0" max="200" inputmode="decimal"
+           value="{{ noise_inside|default_if_none:'' }}" placeholder="dB" aria-label="Peak noise inside, from the bed (dB)"
+           hx-post="{% url 'noise_inside' audit.pk %}" hx-trigger="change, keyup changed delay:800ms" hx-swap="none"
+           hx-on::after-request="this.nextElementSibling.textContent = event.detail.successful ? 'Saved' : 'Not saved: enter a number from 0 to 200'"
+           style="max-width:12rem;margin-bottom:.25rem">
+    <span class="saved-note"></span>
+  </div>
+{% endif %}
 {% for entry in entries %}
   <div class="item">
     <h4>{{ entry.label }}{% if entry.absent %} <span class="tag unanswered">Expected, not in inventory</span>{% endif %}</h4>

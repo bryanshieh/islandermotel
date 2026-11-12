@@ -13,8 +13,9 @@ from django.views.static import serve as static_serve
 
 from . import checklist
 from .ac import ac_result, reading, set_reading
+from .noise import noise_result, set_noise
 from .photos import NotAPhoto, shrink_photo
-from .forms import DecorForm, IssueForm, NewAuditForm, StartForm, WrapUpForm
+from .forms import DecorForm, IssueForm, NewAuditForm, NoiseForm, StartForm, WrapUpForm
 from .models import (
     AC_END_LABEL,
     AC_START_LABEL,
@@ -123,6 +124,7 @@ def start_step(request, audit):
         initial={
             "ambient_temperature_f": audit.ambient_temperature_f,
             "square_footage": room.square_footage,
+            "noise_outside_db": noise_result(audit).outside,
             "ac_start_value": start.measured_value if start else None,
             "ac_start_time": start.measured_at if start else None,
         },
@@ -134,6 +136,7 @@ def start_step(request, audit):
         if ask_square_footage and data["square_footage"]:
             room.square_footage = data["square_footage"]
             room.save(update_fields=["square_footage"])
+        set_noise(audit, "outside", data["noise_outside_db"])
         set_reading(
             audit,
             AC_START_LABEL,
@@ -177,8 +180,22 @@ def zone_step(request, audit, step):
             "flooring_types": FLOORING_TYPES,
             "buckets": ActionBucket.choices,
             "zone_photo": audit.zone_photo(zone),
+            "noise_inside": noise_result(audit).inside if zone == Zone.BEDROOM else None,
+            "show_noise": zone == Zone.BEDROOM,
         },
     )
+
+
+@login_required
+@require_POST
+def noise_inside(request, pk):
+    """Autosave the peak dB reading taken inside the bedroom, from the bed."""
+    audit = get_object_or_404(Audit, pk=pk)
+    form = NoiseForm(request.POST)
+    if not form.is_valid():
+        return HttpResponseBadRequest("Enter a number between 0 and 200")
+    set_noise(audit, "inside", form.cleaned_data["value"])
+    return HttpResponse(status=204)
 
 
 @login_required
@@ -254,6 +271,7 @@ def wrapup_step(request, audit):
             "form": form,
             "nav": nav,
             "ac": ac_result(audit),
+            "noise": noise_result(audit),
             "unanswered_total": sum(step["unanswered"] or 0 for step in nav),
             "issues": [f.issue for f in audit.findings.all() if hasattr(f, "issue")],
         },

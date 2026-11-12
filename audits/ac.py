@@ -68,8 +68,12 @@ def ac_result(audit):
     )
 
 
-def set_reading(audit, label, value, measured_at):
-    """Create, update or (when value is None) remove one A/C reading."""
+def set_measurement(audit, label, value, measured_at, unit, fixture=None):
+    """Create, update or (when value is None) remove one measurement finding.
+
+    With a fixture the measurement is about that fixture; without one it is
+    about the room as a whole.
+    """
     finding = Finding.objects.filter(
         audit=audit, check_type=CheckType.MEASUREMENT, measurement_label=label
     ).first()
@@ -80,13 +84,20 @@ def set_reading(audit, label, value, measured_at):
     if finding is None:
         finding = Finding(
             audit=audit,
-            target_kind=ItemKind.FIXTURE,
-            fixture=audit.room.ac_unit(),
+            target_kind=ItemKind.FIXTURE if fixture else "",
+            fixture=fixture,
             check_type=CheckType.MEASUREMENT,
             measurement_label=label,
         )
     finding.measured_value = value
-    finding.unit = UNIT_F
+    finding.unit = unit
     finding.measured_at = measured_at
     finding.save()
     return finding
+
+
+def set_reading(audit, label, value, measured_at):
+    """Create, update or (when value is None) remove one A/C reading."""
+    return set_measurement(
+        audit, label, value, measured_at, UNIT_F, fixture=audit.room.ac_unit()
+    )

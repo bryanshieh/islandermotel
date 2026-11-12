@@ -423,6 +423,8 @@ ISSUE_BUCKETS = (ActionBucket.FIX_NOW, ActionBucket.WORK_ORDER, ActionBucket.CAP
 
 AC_START_LABEL = "A/C supply air start"
 AC_END_LABEL = "A/C supply air end"
+NOISE_OUTSIDE_LABEL = "Peak noise outside"
+NOISE_INSIDE_LABEL = "Peak noise inside (from bed)"
 
 AUTO_CLOSE_NOTE = "Closed automatically: the audit finding was changed and is no longer a problem."
 
@@ -484,6 +486,8 @@ class Finding(models.Model):
             return self.standard.name
         if self.check_type == CheckType.SMELL:
             return "Room smell"
+        if self.check_type == CheckType.MEASUREMENT and self.measurement_label:
+            return self.measurement_label
         return "(removed item)"
 
     @property

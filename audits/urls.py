@@ -6,6 +6,7 @@ urlpatterns = [
     path("", views.home, name="home"),
     path("audits/<int:pk>/finding/", views.finding_update, name="finding_update"),
     path("audits/<int:pk>/zone-photo/<slug:zone>/", views.zone_photo, name="zone_photo"),
+    path("audits/<int:pk>/noise-inside/", views.noise_inside, name="noise_inside"),
     path("audits/<int:pk>/decor/", views.add_decor, name="add_decor"),
     path("audits/<int:pk>/decor/<int:item_pk>/delete/", views.delete_decor, name="delete_decor"),
     path("audits/<int:pk>/flooring/<int:item_pk>/", views.set_material, name="set_material"),

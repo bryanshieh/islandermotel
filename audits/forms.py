@@ -18,6 +18,18 @@ def temperature_field(label):
     )
 
 
+def decibel_field(label):
+    return forms.DecimalField(
+        label=label,
+        required=False,
+        max_digits=5,
+        decimal_places=1,
+        min_value=0,
+        max_value=200,
+        widget=forms.NumberInput(attrs={"step": "0.1", "inputmode": "decimal"}),
+    )
+
+
 def reading_time_field(label):
     return forms.DateTimeField(
         label=label,
@@ -49,8 +61,13 @@ class StartForm(forms.Form):
     square_footage = forms.IntegerField(
         label="Room square footage", required=False, min_value=1, max_value=5000
     )
+    noise_outside_db = decibel_field("Peak noise outside (dB)")
     ac_start_value = temperature_field("A/C supply air, first reading (°F)")
     ac_start_time = reading_time_field("Time of first reading")
+
+
+class NoiseForm(forms.Form):
+    value = decibel_field("Peak noise inside, from the bed (dB)")
 
 
 class WrapUpForm(forms.Form):

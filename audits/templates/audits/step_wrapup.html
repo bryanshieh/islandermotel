@@ -27,6 +27,13 @@
     <small>Pass: a drop of at least 20°F within 10 minutes. Calculated from the two saved readings.</small>
   </article>
 
+  {% if noise.recorded %}
+    <p><strong>Peak noise:</strong>
+      outside {% if noise.outside is not None %}{{ noise.outside }} dB{% else %}not logged{% endif %},
+      inside {% if noise.inside is not None %}{{ noise.inside }} dB{% else %}not logged{% endif %}{% if noise.reduction is not None %}
+      (difference {{ noise.reduction }} dB){% endif %}.</p>
+  {% endif %}
+
   <fieldset class="rating">
     <legend>{{ form.overall_rating.label }} (1 to 4)</legend>
     {% for radio in form.overall_rating %}<label>{{ radio.tag }} {{ radio.choice_label }}</label>{% endfor %}

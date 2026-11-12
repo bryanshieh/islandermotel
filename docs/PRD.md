@@ -39,7 +39,7 @@ v1 covers the audit loop end to end: set up rooms, run an audit, triage issues, 
 | --- | --- |
 | Rooms and room types, with default inventory generated from the type | Offline mode |
 | Guided, zone-by-zone audit on a laptop, tablet or phone | Offline use on the phone |
-| Findings: condition, function, presence, smell, measurements (A/C test) | Multiple users, roles, contractor access |
+| Findings: condition, function, presence, smell, measurements (A/C test, peak noise outside and inside) | Multiple users, roles, contractor access |
 | Optional photo on any finding, taken with the phone camera and shrunk on upload | Per-room history view (data is kept, screen is not built) |
 | Issues with a light lifecycle: status, cost estimate, resolved date | Audit progress view (for example, 12 of 34 rooms done) |
 | Issue list with filters and CSV export | Full maintenance system: assignees, history, priorities beyond a field |
@@ -169,9 +169,9 @@ Inventory items hang off a Room, each Audit is one visit to a Room, and a Findin
 
 The audit walks the room in the order Bryan physically moves through it, and each zone lists every item to be answered. No result is pre-selected.
 
-1. **Start.** Pick the room, note the smell on walking in (OK, musty, smoke, Other), record ambient temperature, start the A/C and log the first supply-air reading with its time. On the first audit only, also measure the room and record its square footage on the Room.
-2. **Bedroom zone.** Entry door (including its locks, hinges and threshold), lights, outlets, TV, mini fridge, A/C casing and filter, heater pilot, bed and bedding (squeak test of the frame and mattress, bedbug check), chairs, table, dresser, decor (counted on the first audit, with a record added for each piece; a piece added this way can also be deleted from the same screen), floor and its flooring type, ceiling, walls, windows, trim, signage.
-3. **Bathroom zone.** Sink, shower and its two handles, toilet, lights, mirror, outlets, towel rack, floor and its flooring type, ceiling, walls, windows, trim, signage.
+1. **Start.** Pick the room, note the smell on walking in (OK, musty, smoke, Other), record peak noise outside (dB) and ambient temperature, start the A/C and log the first supply-air reading with its time. On the first audit only, also measure the room and record its square footage on the Room.
+2. **Bedroom zone.** Optional general photo, peak noise inside measured from the bed (dB), entry door (including its locks, hinges and threshold), lights, outlets, TV, mini fridge, A/C casing and filter, heater pilot, bed and bedding (squeak test of the frame and mattress, bedbug check), chairs, table, dresser, decor (counted on the first audit, with a record added for each piece; a piece added this way can also be deleted from the same screen), floor and its flooring type, ceiling, walls, windows, trim, signage.
+3. **Bathroom zone.** Optional general photo, sink, shower and its two handles, toilet, lights, mirror, outlets, towel rack, floor and its flooring type, ceiling, walls, windows, trim, signage.
 4. **Wrap-up.** Log the second A/C reading with its time, give an overall rating (1-4), and add notes.
 5. **Save.** Each problem logged on the way becomes an Issue; everything marked OK stays a plain record.
 
@@ -282,3 +282,7 @@ Phase 1 depends on knowing the room types and their default inventory; phases 2 
 **Nov 12, 2026, zone photos**
 
 - Each zone (bedroom, bathroom) can have one optional general photo per audit, for an overall view of the room's state. It is stored on the Audit, is not a finding, and does not open an Issue.
+
+**Nov 12, 2026, noise measurements**
+
+- Two optional noise readings per audit, each a measurement Finding in dB with a timestamp: peak dB outside the room, taken on the Start step, and peak dB inside, taken from the bed on the Bedroom step. They are room-level (no inventory target). Wrap-up shows both and the difference. No pass or fail target has been set.

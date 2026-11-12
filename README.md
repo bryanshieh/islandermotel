@@ -188,6 +188,10 @@ Added on Nov 11 after Bryan chose self-hosting over a paid or free host:
 - **One optional general photo per zone** (bedroom and bathroom), added at the
   top of each zone's screen. It is saved on the audit, in `media/zones/`, and
   does not count as an unanswered item or open an issue.
+- **Noise measurements.** Peak dB outside the room is entered on the Start
+  step, and peak dB inside, measured from the bed, at the top of the Bedroom
+  step. Both are optional measurement findings in dB. Wrap-up shows the two
+  readings and the difference. There is no pass or fail target.
 
 ## Assumptions
 

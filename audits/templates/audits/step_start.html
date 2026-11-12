@@ -13,6 +13,9 @@
   {{ form.non_field_errors }}
   <label>{{ form.ambient_temperature_f.label }} {{ form.ambient_temperature_f }}</label>
   {{ form.ambient_temperature_f.errors }}
+  <label>{{ form.noise_outside_db.label }} {{ form.noise_outside_db }}
+    <small>Highest reading on the sound meter, standing outside the room.</small></label>
+  {{ form.noise_outside_db.errors }}
   {% if ask_square_footage %}
     <label>{{ form.square_footage.label }} {{ form.square_footage }}
       <small>Measured once, on the room's first audit. Saved on the room.</small></label>
