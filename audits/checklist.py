@@ -1,7 +1,7 @@
 """Builds the list of items and checks shown in each audit zone.
 
 The list is computed from the room's inventory and its room type standard each
-time, so inventory added mid-audit (for example decor) shows up straight away.
+time, so items added mid-audit (the Other zone) show up straight away.
 A Finding row is only created when an item is first answered; an item with no
 Finding, or a Finding with a blank result, is unanswered.
 """
@@ -25,10 +25,11 @@ from .models import (
     Zone,
 )
 
-AUDIT_ZONES = [Zone.BEDROOM, Zone.BATHROOM]
+AUDIT_ZONES = [Zone.BEDROOM, Zone.BATHROOM, Zone.OTHER]
 
 # The room-level smell check on the Start step.
 SMELL_KEY = "room-0-smell"
+SMELL_ITEM_KEY = "room-0"
 
 CHECK_LABELS = {
     CheckType.CONDITION: "Condition",
@@ -49,7 +50,6 @@ FUNCTION_CATEGORIES = {
     FixtureCategory.SHOWER,
     FixtureCategory.TOILET,
     FixtureCategory.SMOKE_DETECTOR,
-    FixtureCategory.SHOWER_HANDLE,
     FixtureCategory.MINI_FRIDGE,
 }
 SQUEAK_CATEGORIES = {FurnishingCategory.BED_FRAME, FurnishingCategory.MATTRESS}
@@ -137,11 +137,64 @@ class CheckRow:
 
 @dataclass
 class ItemEntry:
+    """One item on the audit screen with its checks.
+
+    The action, note and photo belong to the item as a whole, not to each
+    check. The note and photo are stored on the item's first check.
+    """
+
+    key: str
     label: str
     note: str = ""
     absent: bool = False
     checks: list = field(default_factory=list)
     item: object = None
+
+    @property
+    def dom_id(self):
+        return f"item-{self.key}"
+
+    @property
+    def anchor(self):
+        """The first check; its finding carries the item's note and photo."""
+        return self.checks[0]
+
+    @property
+    def not_applicable(self):
+        return self.anchor.result == NOT_APPLICABLE
+
+    @property
+    def visible_checks(self):
+        """N/A on the first check means there is nothing else to answer."""
+        return self.checks[:1] if self.not_applicable else self.checks
+
+    @property
+    def unanswered(self):
+        return sum(1 for row in self.visible_checks if not row.result)
+
+    @property
+    def answered(self):
+        return any(row.result for row in self.visible_checks)
+
+    @property
+    def problems(self):
+        return [row.finding for row in self.visible_checks if row.finding and row.finding.is_problem]
+
+    @property
+    def action(self):
+        """The item's single action: the bucket shared by its problem findings."""
+        return next((f.action_bucket for f in self.problems if f.action_bucket), "")
+
+    @property
+    def notes(self):
+        return self.anchor.finding.notes if self.anchor.finding else ""
+
+    @property
+    def photo(self):
+        return self.anchor.finding.photo if self.anchor.finding else None
+
+    def row(self, key):
+        return next((row for row in self.checks if row.key == key), None)
 
     @property
     def is_floor(self):
@@ -154,12 +207,8 @@ class ItemEntry:
 
     @property
     def can_delete(self):
-        """Decor is added during an audit, so it can be deleted there too."""
-        return (
-            self.item is not None
-            and self.item.kind == ItemKind.FURNISHING
-            and self.item.category == FurnishingCategory.DECOR
-        )
+        """Items added during an audit (the Other zone) can be deleted there too."""
+        return self.item is not None and self.item.zone == Zone.OTHER
 
 
 def build_zone(audit, zone, findings=None):
@@ -186,7 +235,9 @@ def build_zone(audit, zone, findings=None):
             if totals[ident] > 1:
                 label = f"{label} #{seen[ident]}"
             field_name = TARGET_FIELDS[item.kind]
-            entry = ItemEntry(label=label, note=item.notes, item=item)
+            entry = ItemEntry(
+                key=f"{field_name}-{item.id}", label=label, note=item.notes, item=item
+            )
             for check in checks_for(item):
                 key = f"{field_name}-{item.id}-{check}"
                 entry.checks.append(
@@ -203,6 +254,7 @@ def build_zone(audit, zone, findings=None):
                 key = f"standard-{standard.id}-{CheckType.PRESENCE}"
                 entries.append(
                     ItemEntry(
+                        key=f"standard-{standard.id}",
                         label=standard.name,
                         note=f"Standard expects {standard.expected_quantity}, room has {have}.",
                         absent=True,
@@ -221,11 +273,17 @@ def build_zone(audit, zone, findings=None):
     return entries
 
 
-def smell_row(audit, findings=None):
+def smell_entry(audit, findings=None):
     """The room-level smell check shown on the Start step."""
     if findings is None:
         findings = {finding_key(f): f for f in audit.findings.all()}
-    return CheckRow(SMELL_KEY, CheckType.SMELL, "", None, None, findings.get(SMELL_KEY))
+    row = CheckRow(SMELL_KEY, CheckType.SMELL, "", None, None, findings.get(SMELL_KEY))
+    return ItemEntry(
+        key=SMELL_ITEM_KEY,
+        label="Room smell",
+        note="On walking in, before the A/C runs.",
+        checks=[row],
+    )
 
 
 def build_all(audit):
@@ -234,21 +292,24 @@ def build_all(audit):
     return {zone: build_zone(audit, zone, findings) for zone in AUDIT_ZONES}
 
 
-def find_row(audit, key):
-    if key == SMELL_KEY:
-        return smell_row(audit)
+def find_entry(audit, item_key):
+    """The item with this key, built fresh from the database, or None."""
+    if item_key == SMELL_ITEM_KEY:
+        return smell_entry(audit)
     for entries in build_all(audit).values():
         for entry in entries:
-            for row in entry.checks:
-                if row.key == key:
-                    return row
+            if entry.key == item_key:
+                return entry
     return None
 
 
 def zone_counts(audit):
     """{step: (total checks, unanswered checks)} for Start and each zone."""
-    counts = {"start": (1, 0 if smell_row(audit).result else 1)}
+    smell = smell_entry(audit)
+    counts = {"start": (1, smell.unanswered)}
     for zone, entries in build_all(audit).items():
-        rows = [row for entry in entries for row in entry.checks]
-        counts[zone] = (len(rows), sum(1 for row in rows if not row.result))
+        counts[zone] = (
+            sum(len(entry.visible_checks) for entry in entries),
+            sum(entry.unanswered for entry in entries),
+        )
     return counts

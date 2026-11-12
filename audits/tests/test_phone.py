@@ -74,35 +74,38 @@ class PhotoUploadTests(TestCase):
     def setUp(self):
         self.client.force_login(self.user)
         self.audit = Audit.objects.create(room=self.room, cycle_year=2026)
-        self.url = reverse("finding_update", args=[self.audit.pk])
+        self.url = reverse("item_update", args=[self.audit.pk])
         entries = checklist.build_zone(self.audit, "bathroom")
-        self.key = next(e for e in entries if e.label == "Toilet").checks[0].key
-        self.client.post(self.url, {"key": self.key, "result": "damaged"})
+        entry = next(e for e in entries if e.label == "Toilet")
+        self.item = entry.key
+        self.client.post(
+            self.url, {"item": self.item, "key": entry.checks[0].key, "result": "damaged"}
+        )
 
     def test_uploaded_photo_is_stored_shrunk(self):
-        self.client.post(self.url, {"key": self.key, "photo": image_file((4000, 3000))})
+        self.client.post(self.url, {"item": self.item, "photo": image_file((4000, 3000))})
         finding = Finding.objects.get()
         with finding.photo.open() as stored:
             self.assertEqual(Image.open(stored).size, (MAX_SIDE, 1200))
 
     def test_replacing_a_photo_removes_the_old_file(self):
-        self.client.post(self.url, {"key": self.key, "photo": image_file((100, 100), name="a.jpg")})
+        self.client.post(self.url, {"item": self.item, "photo": image_file((100, 100), name="a.jpg")})
         first = Finding.objects.get().photo
         first_name, storage = first.name, first.storage
-        self.client.post(self.url, {"key": self.key, "photo": image_file((100, 100), name="b.jpg")})
+        self.client.post(self.url, {"item": self.item, "photo": image_file((100, 100), name="b.jpg")})
         self.assertFalse(storage.exists(first_name))
         self.assertTrue(storage.exists(Finding.objects.get().photo.name))
 
     def test_bad_file_shows_an_error_and_keeps_the_finding(self):
         bad = SimpleUploadedFile("notes.jpg", b"not a picture")
-        response = self.client.post(self.url, {"key": self.key, "photo": bad})
+        response = self.client.post(self.url, {"item": self.item, "photo": bad})
         self.assertContains(response, "not a photo the app can read")
         finding = Finding.objects.get()
         self.assertFalse(finding.photo)
         self.assertEqual(finding.result, "damaged")
 
     def test_photos_need_a_login(self):
-        self.client.post(self.url, {"key": self.key, "photo": image_file((100, 100))})
+        self.client.post(self.url, {"item": self.item, "photo": image_file((100, 100))})
         photo_url = Finding.objects.get().photo.url
         self.assertEqual(self.client.get(photo_url).status_code, 200)
         self.client.logout()

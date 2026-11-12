@@ -46,8 +46,20 @@ class FindingToIssueTests(TestCase):
         self.assertEqual(issue.title, "Chair #1 (Bedroom): Damaged")
 
     def test_each_issue_bucket_creates_an_issue(self):
-        for bucket in (ActionBucket.FIX_NOW, ActionBucket.WORK_ORDER, ActionBucket.CAPEX):
-            self.finding(bucket=bucket)
+        chairs = list(self.room.furnishings.filter(category="chair")) + [
+            self.room.furnishings.get(category="table")
+        ]
+        for item, bucket in zip(
+            chairs, (ActionBucket.FIX_NOW, ActionBucket.WORK_ORDER, ActionBucket.CAPEX)
+        ):
+            Finding.objects.create(
+                audit=self.audit,
+                target_kind=ItemKind.FURNISHING,
+                furnishing=item,
+                check_type=CheckType.CONDITION,
+                result="damaged",
+                action_bucket=bucket,
+            )
         self.assertEqual(
             sorted(Issue.objects.values_list("bucket", flat=True)),
             ["capex", "fix_now", "work_order"],
@@ -61,8 +73,10 @@ class FindingToIssueTests(TestCase):
         self.assertEqual(ActionBucket.values, ["none", "fix_now", "work_order", "capex"])
 
     def test_bucket_none_or_unset_creates_no_issue(self):
-        for bucket in (ActionBucket.NONE, ""):
-            self.finding(bucket=bucket)
+        self.finding(bucket=ActionBucket.NONE)
+        self.assertEqual(Issue.objects.count(), 0)
+        Finding.objects.all().delete()
+        self.finding(bucket="")
         self.assertEqual(Issue.objects.count(), 0)
 
     def test_unanswered_finding_creates_no_issue(self):
@@ -172,6 +186,38 @@ class FindingToIssueTests(TestCase):
             action_bucket=ActionBucket.WORK_ORDER,
         )
         self.assertEqual(Issue.objects.get().title, "Sink counter (Bathroom): Missing")
+
+    def test_several_problems_on_one_item_share_one_issue(self):
+        bed = self.room.furnishings.get(category="mattress")
+
+        def check(check_type, result, bucket=""):
+            return Finding.objects.create(
+                audit=self.audit,
+                target_kind=ItemKind.FURNISHING,
+                furnishing=bed,
+                check_type=check_type,
+                result=result,
+                action_bucket=bucket,
+            )
+
+        check(CheckType.PEST, "fail")  # answered first, no action yet
+        self.assertEqual(Issue.objects.count(), 0)
+        condition = check(CheckType.CONDITION, "worn", ActionBucket.CAPEX)
+        check(CheckType.NOISE, "pass")
+        issue = Issue.objects.get()
+        # Listed in check order (condition before bedbug), good results left out.
+        self.assertEqual(issue.title, "Mattress (Bedroom): Worn, Fail")
+        self.assertEqual((issue.bucket, issue.finding), ("capex", condition))
+        # A different item in the same audit gets its own issue.
+        self.finding()
+        self.assertEqual(Issue.objects.count(), 2)
+
+    def test_issue_notes_and_photos_come_from_all_of_the_items_findings(self):
+        finding = self.finding()
+        finding.notes = "Leg split"
+        finding.save()
+        self.assertEqual(Issue.objects.get().notes_text, "Leg split")
+        self.assertEqual(Issue.objects.get().photos, [])
 
     def test_not_applicable_is_not_a_problem(self):
         self.finding(result="n_a", bucket=ActionBucket.FIX_NOW)

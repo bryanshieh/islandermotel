@@ -63,10 +63,11 @@ class NoiseTests(TestCase):
         self.assertContains(page, "Peak noise outside (dB)")
         self.client.post(
             f"/audits/{self.audit.pk}/start/",
-            {"noise_outside_db": "72.5", "ac_start_value": "78", "action": "save"},
+            {"noise_outside_db": "72.5", "ambient_temperature_f": "88", "action": "save"},
         )
         self.assertEqual(noise_result(self.audit).outside, Decimal("72.5"))
-        self.assertEqual(ac_result(self.audit).start_value, Decimal("78.0"))  # A/C unaffected
+        self.audit.refresh_from_db()
+        self.assertEqual(ac_result(self.audit).outside, Decimal("88.0"))  # saved alongside
         page = self.client.get(f"/audits/{self.audit.pk}/start/")
         self.assertContains(page, 'value="72.5"')
         # Clearing the field removes the reading.

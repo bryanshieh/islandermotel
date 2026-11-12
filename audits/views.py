@@ -12,39 +12,41 @@ from django.views.decorators.http import require_POST
 from django.views.static import serve as static_serve
 
 from . import checklist
-from .ac import ac_result, reading, set_reading
-from .noise import noise_result, set_noise
-from .photos import NotAPhoto, shrink_photo
-from .forms import DecorForm, IssueForm, NewAuditForm, NoiseForm, StartForm, WrapUpForm
+from .ac import ac_result, reading, set_outflow
+from .forms import IssueForm, NewAuditForm, NoiseForm, OtherItemForm, StartForm, WrapUpForm
 from .models import (
-    AC_END_LABEL,
-    AC_START_LABEL,
+    AC_OUTFLOW_LABEL,
     FLOORING_TYPES,
+    NOT_APPLICABLE,
+    OTHER,
+    RESULT_OPTIONS,
     ActionBucket,
+    Audit,
     BuildingElement,
     BuildingElementType,
     Finding,
-    Audit,
     Furnishing,
     FurnishingCategory,
     Issue,
     IssueBucket,
     IssueStatus,
-    OTHER,
-    RESULT_OPTIONS,
     Room,
     RoomType,
     Zone,
     room_sort_key,
 )
+from .noise import noise_result, set_noise
+from .photos import NotAPhoto, shrink_photo
 
 STEPS = [
     ("start", "Start"),
     ("bedroom", "Bedroom"),
     ("bathroom", "Bathroom"),
+    ("other", "Other"),
     ("wrapup", "Wrap-up"),
 ]
 STEP_SLUGS = [slug for slug, _ in STEPS]
+PHOTO_ERROR = "That file is not a photo the app can read. Try a JPEG or PNG."
 
 
 def next_step(step):
@@ -69,13 +71,9 @@ def step_nav(audit, current):
     return nav
 
 
-def reading_time(submitted, existing):
-    """Time for an A/C reading: as entered, else as already saved, else now."""
-    if submitted:
-        return submitted
-    if existing and existing.measured_at:
-        return existing.measured_at
-    return timezone.now()
+def local_input_value(moment):
+    """A datetime as the text a datetime-local input expects, in Pacific time."""
+    return timezone.localtime(moment).strftime("%Y-%m-%dT%H:%M") if moment else ""
 
 
 @login_required
@@ -117,32 +115,25 @@ def audit_step(request, pk, step):
 def start_step(request, audit):
     room = audit.room
     first_audit = not room.audits.filter(pk__lt=audit.pk).exists()
-    ask_square_footage = room.square_footage is None or first_audit
-    start = reading(audit, AC_START_LABEL)
+    ask_dimensions = room.square_footage is None or first_audit
     form = StartForm(
         request.POST or None,
         initial={
             "ambient_temperature_f": audit.ambient_temperature_f,
-            "square_footage": room.square_footage,
+            "room_length_ft": room.length_ft,
+            "room_width_ft": room.width_ft,
             "noise_outside_db": noise_result(audit).outside,
-            "ac_start_value": start.measured_value if start else None,
-            "ac_start_time": start.measured_at if start else None,
+            "ac_on_time": audit.ac_on_at,
         },
     )
     if request.method == "POST" and form.is_valid():
         data = form.cleaned_data
         audit.ambient_temperature_f = data["ambient_temperature_f"]
+        audit.ac_on_at = data["ac_on_time"]
         audit.save()
-        if ask_square_footage and data["square_footage"]:
-            room.square_footage = data["square_footage"]
-            room.save(update_fields=["square_footage"])
+        if ask_dimensions and data["room_length_ft"] and data["room_width_ft"]:
+            room.set_dimensions(data["room_length_ft"], data["room_width_ft"])
         set_noise(audit, "outside", data["noise_outside_db"])
-        set_reading(
-            audit,
-            AC_START_LABEL,
-            data["ac_start_value"],
-            reading_time(data["ac_start_time"], start),
-        )
         if request.POST.get("action") == "continue":
             return redirect("audit_step", pk=audit.pk, step=next_step("start"))
         messages.success(request, "Saved.")
@@ -154,32 +145,56 @@ def start_step(request, audit):
             "audit": audit,
             "room": room,
             "form": form,
-            "ask_square_footage": ask_square_footage,
+            "ask_dimensions": ask_dimensions,
+            "ac_on_value": request.POST.get("ac_on_time", "")
+            if form.is_bound
+            else local_input_value(audit.ac_on_at),
             "nav": step_nav(audit, "start"),
-            "has_ac_unit": room.ac_unit() is not None,
-            "smell": checklist.smell_row(audit),
+            "entry": checklist.smell_entry(audit),
             "buckets": ActionBucket.choices,
         },
     )
 
 
+@login_required
+@require_POST
+def ac_on(request, pk):
+    """Record that the A/C was switched on just now (the server's clock)."""
+    audit = get_object_or_404(Audit, pk=pk)
+    audit.ac_on_at = timezone.now()
+    audit.save(update_fields=["ac_on_at"])
+    return render(
+        request,
+        "audits/_ac_on.html",
+        {"audit": audit, "ac_on_value": local_input_value(audit.ac_on_at)},
+    )
+
+
+def zone_context(audit, zone):
+    return {
+        "audit": audit,
+        "zone": zone,
+        "entries": checklist.build_zone(audit, zone),
+        "buckets": ActionBucket.choices,
+        "flooring_types": FLOORING_TYPES,
+        "other_form": OtherItemForm() if zone == Zone.OTHER else None,
+    }
+
+
 def zone_step(request, audit, step):
     zone = Zone(step)
-    entries = checklist.build_zone(audit, zone)
+    has_photo = zone in (Zone.BEDROOM, Zone.BATHROOM)
     return render(
         request,
         "audits/step_zone.html",
         {
-            "audit": audit,
+            **zone_context(audit, zone),
             "room": audit.room,
-            "zone": zone,
-            "entries": entries,
             "nav": step_nav(audit, step),
             "next_step": next_step(step),
-            "decor_form": DecorForm() if zone == Zone.BEDROOM else None,
-            "flooring_types": FLOORING_TYPES,
-            "buckets": ActionBucket.choices,
-            "zone_photo": audit.zone_photo(zone),
+            "next_label": dict(STEPS)[next_step(step)],
+            "has_zone_photo": has_photo,
+            "zone_photo": audit.zone_photo(zone) if has_photo else None,
             "noise_inside": noise_result(audit).inside if zone == Zone.BEDROOM else None,
             "show_noise": zone == Zone.BEDROOM,
         },
@@ -203,7 +218,7 @@ def noise_inside(request, pk):
 def zone_photo(request, pk, zone):
     """Add, replace or remove the optional general photo of a zone."""
     audit = get_object_or_404(Audit, pk=pk)
-    if zone not in checklist.AUDIT_ZONES:
+    if zone not in (Zone.BEDROOM, Zone.BATHROOM):
         raise Http404
     zone = Zone(zone)
     field = f"{zone}_photo"
@@ -215,7 +230,7 @@ def zone_photo(request, pk, zone):
         try:
             photo = shrink_photo(request.FILES["photo"])
         except NotAPhoto:
-            photo_error = "That file is not a photo the app can read. Try a JPEG or PNG."
+            photo_error = PHOTO_ERROR
         else:
             if current:
                 current.delete(save=False)  # replace, do not pile up files
@@ -234,22 +249,24 @@ def zone_photo(request, pk, zone):
 
 
 def wrapup_step(request, audit):
-    end = reading(audit, AC_END_LABEL)
+    outflow = reading(audit, AC_OUTFLOW_LABEL)
     form = WrapUpForm(
         request.POST or None,
         initial={
-            "ac_end_value": end.measured_value if end else None,
-            "ac_end_time": end.measured_at if end else None,
-            "overall_rating": audit.overall_rating,
+            "ac_outflow_value": outflow.measured_value if outflow else None,
+            "ac_outflow_time": outflow.measured_at if outflow else None,
             "overall_notes": audit.overall_notes,
         },
     )
     if request.method == "POST" and form.is_valid():
         data = form.cleaned_data
-        set_reading(
-            audit, AC_END_LABEL, data["ac_end_value"], reading_time(data["ac_end_time"], end)
+        # Time of the reading: as entered, else as already saved, else now.
+        measured_at = (
+            data["ac_outflow_time"]
+            or (outflow.measured_at if outflow else None)
+            or timezone.now()
         )
-        audit.overall_rating = data["overall_rating"]
+        set_outflow(audit, data["ac_outflow_value"], measured_at)
         audit.overall_notes = data["overall_notes"]
         finishing = request.POST.get("action") == "finish"
         if finishing and audit.end_time is None:
@@ -262,6 +279,7 @@ def wrapup_step(request, audit):
         return redirect("audit_step", pk=audit.pk, step="wrapup")
 
     nav = step_nav(audit, "wrapup")
+    issues = {f.issue.pk: f.issue for f in audit.findings.all() if hasattr(f, "issue")}
     return render(
         request,
         "audits/step_wrapup.html",
@@ -273,94 +291,133 @@ def wrapup_step(request, audit):
             "ac": ac_result(audit),
             "noise": noise_result(audit),
             "unanswered_total": sum(step["unanswered"] or 0 for step in nav),
-            "issues": [f.issue for f in audit.findings.all() if hasattr(f, "issue")],
+            "issues": list(issues.values()),
         },
     )
 
 
 @login_required
 @require_POST
-def finding_update(request, pk):
-    """Autosave one tap or field change for one check; returns the check's HTML."""
-    audit = get_object_or_404(Audit.objects.select_related("room", "room__room_type"), pk=pk)
-    row = checklist.find_row(audit, request.POST.get("key", ""))
-    if row is None:
-        raise Http404
-    finding = row.get_or_build_finding(audit)
+def item_update(request, pk):
+    """Autosave one tap or field change on one item; returns the item's HTML.
 
-    if "result" in request.POST:
-        result = request.POST["result"]
-        if result and result not in dict(RESULT_OPTIONS[row.check_type]):
-            return HttpResponseBadRequest("Unknown result")
-        finding.result = result
-        if result != OTHER:
-            finding.result_other = ""
-        if not finding.is_problem:
-            finding.action_bucket = ""
-    if "result_other" in request.POST and finding.result == OTHER:
-        finding.result_other = request.POST["result_other"].strip()[:200]
-    if "action_bucket" in request.POST and finding.is_problem:
-        bucket = request.POST["action_bucket"]
+    `item` names the item. A result (or an Other description) also needs
+    `key`, the check it answers. The action, note and photo belong to the
+    item as a whole.
+    """
+    audit = get_object_or_404(Audit.objects.select_related("room", "room__room_type"), pk=pk)
+    item_key = request.POST.get("item", "")
+    entry = checklist.find_entry(audit, item_key)
+    if entry is None:
+        raise Http404
+    post = request.POST
+
+    if "result" in post or "result_other" in post:
+        row = entry.row(post.get("key", ""))
+        if row is None:
+            raise Http404
+        finding = row.get_or_build_finding(audit)
+        if "result" in post:
+            result = post["result"]
+            if result and result not in dict(RESULT_OPTIONS[row.check_type]):
+                return HttpResponseBadRequest("Unknown result")
+            finding.result = result
+            if result != OTHER:
+                finding.result_other = ""
+            if finding.is_problem:
+                # One action per item: a new problem takes the item's action.
+                finding.action_bucket = finding.action_bucket or entry.action
+            else:
+                finding.action_bucket = ""
+        if "result_other" in post and finding.result == OTHER:
+            finding.result_other = post["result_other"].strip()[:200]
+        finding.save()
+        if row is entry.anchor and finding.result == NOT_APPLICABLE:
+            # Nothing to do on an item that is not applicable: clear its other
+            # checks. The note and photo stay.
+            for other in entry.checks[1:]:
+                if other.finding and (other.finding.result or other.finding.action_bucket):
+                    other.finding.result = ""
+                    other.finding.result_other = ""
+                    other.finding.action_bucket = ""
+                    other.finding.save()
+
+    if "action_bucket" in post:
+        bucket = post["action_bucket"]
         if bucket not in ActionBucket.values:
-            return HttpResponseBadRequest("Unknown bucket")
-        finding.action_bucket = bucket
-    if "notes" in request.POST:
-        finding.notes = request.POST["notes"].strip()
-    if request.POST.get("remove_photo") and finding.photo:
-        finding.photo.delete(save=False)
+            return HttpResponseBadRequest("Unknown action")
+        for finding in entry.problems:
+            finding.action_bucket = bucket
+            finding.save()
+
     photo_error = ""
-    if "photo" in request.FILES:
-        try:
-            photo = shrink_photo(request.FILES["photo"])
-        except NotAPhoto:
-            photo_error = "That file is not a photo the app can read. Try a JPEG or PNG."
-        else:
-            if finding.photo:
-                finding.photo.delete(save=False)  # replace, do not pile up files
-            finding.photo = photo
-    finding.save()
+    wants_anchor = (
+        ("notes" in post and post["notes"].strip() != entry.notes)
+        or "photo" in request.FILES
+        or post.get("remove_photo")
+    )
+    if wants_anchor:
+        anchor = entry.anchor.get_or_build_finding(audit)
+        if anchor.pk:
+            anchor.refresh_from_db()  # pick up a result saved above
+        if "notes" in post:
+            anchor.notes = post["notes"].strip()
+        if post.get("remove_photo") and anchor.photo:
+            anchor.photo.delete(save=False)
+        if "photo" in request.FILES:
+            try:
+                photo = shrink_photo(request.FILES["photo"])
+            except NotAPhoto:
+                photo_error = PHOTO_ERROR
+            else:
+                if anchor.photo:
+                    anchor.photo.delete(save=False)  # replace, do not pile up files
+                anchor.photo = photo
+        anchor.save()
 
     return render(
         request,
-        "audits/_check.html",
+        "audits/_item.html",
         {
             "audit": audit,
-            "row": row,
+            "entry": checklist.find_entry(audit, item_key),
             "buckets": ActionBucket.choices,
+            "flooring_types": FLOORING_TYPES,
             "photo_error": photo_error,
         },
     )
 
 
-@login_required
-@require_POST
-def add_decor(request, pk):
-    """First-audit decor count: add one Furnishing record per piece."""
-    audit = get_object_or_404(Audit, pk=pk)
-    form = DecorForm(request.POST)
-    if form.is_valid():
-        Furnishing.objects.create(
-            room=audit.room,
-            category=FurnishingCategory.DECOR,
-            zone=Zone.BEDROOM,
-            name=form.cleaned_data["description"],
-        )
-    else:
-        messages.error(request, "Describe the decor piece to add it.")
-    return redirect(reverse("audit_step", args=[audit.pk, "bedroom"]) + "#decor")
+def other_items(request, audit):
+    return render(request, "audits/_zone_items.html", zone_context(audit, Zone.OTHER))
 
 
 @login_required
 @require_POST
-def delete_decor(request, pk, item_pk):
-    """Delete a decor piece added during an audit, with this audit's findings on it."""
+def add_other_item(request, pk):
+    """Add an item that is not on the standard list (decor and the like)."""
     audit = get_object_or_404(Audit, pk=pk)
-    item = get_object_or_404(
-        Furnishing, pk=item_pk, room=audit.room, category=FurnishingCategory.DECOR
+    form = OtherItemForm(request.POST)
+    if not form.is_valid():
+        return HttpResponseBadRequest("Name the item to add it")
+    Furnishing.objects.create(
+        room=audit.room,
+        category=FurnishingCategory.OTHER,
+        zone=Zone.OTHER,
+        name=form.cleaned_data["name"],
     )
+    return other_items(request, audit)
+
+
+@login_required
+@require_POST
+def delete_other_item(request, pk, item_pk):
+    """Delete an item added during an audit, with this audit's findings on it."""
+    audit = get_object_or_404(Audit, pk=pk)
+    item = get_object_or_404(Furnishing, pk=item_pk, room=audit.room, zone=Zone.OTHER)
     Finding.objects.filter(audit=audit, furnishing=item).delete()
     item.delete()
-    return redirect(reverse("audit_step", args=[audit.pk, "bedroom"]) + "#decor")
+    return other_items(request, audit)
 
 
 @login_required
@@ -487,7 +544,7 @@ def issue_export(request):
                 issue.date_opened.isoformat(),
                 issue.date_resolved.isoformat() if issue.date_resolved else "",
                 issue.resolution_notes,
-                issue.finding.notes,
+                issue.notes_text,
             ]
         )
     return response
@@ -546,7 +603,7 @@ def dashboard(request):
     bucket_rows = [(value, label, by_bucket[value]) for value, label in IssueBucket.choices]
     type_rows = [(rt, by_type[rt.id]) for rt in RoomType.objects.all()]
 
-    # A/C result per room, from each room's most recent audit in the cycle.
+    # A/C readings per room, from each room's most recent audit in the cycle.
     latest = {}
     audits = (
         Audit.objects.filter(cycle_year=year, room__is_storage=False)
@@ -560,7 +617,6 @@ def dashboard(request):
         ({"room": audit.room, "audit": audit, "ac": ac_result(audit)} for audit in latest.values()),
         key=lambda row: room_sort_key(row["room"].number),
     )
-    ac_counts = Counter(row["ac"].status for row in ac_rows)
 
     return render(
         request,
@@ -572,8 +628,5 @@ def dashboard(request):
             "bucket_rows": bucket_rows,
             "type_rows": type_rows,
             "ac_rows": ac_rows,
-            "ac_pass": ac_counts["pass"],
-            "ac_fail": ac_counts["fail"],
-            "ac_incomplete": ac_counts["incomplete"],
         },
     )

@@ -38,7 +38,13 @@
     .filters > * { margin-bottom: 0; }
     td select { margin: 0; padding-top: .3rem; padding-bottom: .3rem; }
     .num { text-align: right; }
-    .rating label { display: inline-block; margin-right: 1rem; font-size: 1.1rem; }
+    .btn-row button.clear { min-width: auto; }
+    .check.flash { outline: 3px solid #f9a825; outline-offset: 4px; border-radius: .25rem; }
+    #jump-top { width: auto; margin: 0; }
+    #jump-float { position: fixed; right: 1rem; bottom: 1rem; z-index: 20; width: auto; margin: 0;
+                  border-radius: 2rem; padding: .7rem 1.1rem; box-shadow: 0 2px 8px rgba(0,0,0,.3); }
+    #jump-float[hidden] { display: none; }
+    main { padding-bottom: 5rem; }  /* room for the floating button */
 
     /* Phone layout */
     @media (max-width: 600px) {
@@ -49,7 +55,6 @@
       nav.steps a { flex: 1 1 45%; text-align: center; padding: .6rem .4rem; }
       .item { padding: .6rem .7rem; }
       .btn-row button { flex: 1 1 30%; min-width: 0; padding-left: .4rem; padding-right: .4rem; }
-      .rating label { margin-right: 1.5rem; font-size: 1.25rem; }
       /* Tables become one card per row, with the column name beside each value. */
       table.stack thead { display: none; }
       table.stack tr { display: block; border: 1px solid var(--pico-muted-border-color);

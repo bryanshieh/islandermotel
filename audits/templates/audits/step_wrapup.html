@@ -7,24 +7,23 @@
   {% csrf_token %}
   {{ form.non_field_errors }}
   <article>
-    <h4>A/C test: second reading</h4>
+    <h4>A/C outflow air</h4>
     <div class="grid">
-      <label>{{ form.ac_end_value.label }} {{ form.ac_end_value }}</label>
-      <label>{{ form.ac_end_time.label }} {{ form.ac_end_time }}
+      <label>{{ form.ac_outflow_value.label }} {{ form.ac_outflow_value }}</label>
+      <label>{{ form.ac_outflow_time.label }} {{ form.ac_outflow_time }}
         <small>Leave empty to use the time you press Save.</small></label>
     </div>
-    {{ form.ac_end_value.errors }}{{ form.ac_end_time.errors }}
+    {{ form.ac_outflow_value.errors }}{{ form.ac_outflow_time.errors }}
     <table class="stack">
-      <thead><tr><th>First reading</th><th>Second reading</th><th>Elapsed</th><th>Drop</th><th>Result</th></tr></thead>
+      <thead><tr><th>Outside</th><th>A/C outflow</th><th>Difference</th><th>A/C running</th></tr></thead>
       <tbody><tr>
-        <td data-label="First reading">{% if ac.start_value is not None %}{{ ac.start_value }}°F at {{ ac.start_at|date:"g:i A" }}{% else %}Not logged{% endif %}</td>
-        <td data-label="Second reading">{% if ac.end_value is not None %}{{ ac.end_value }}°F at {{ ac.end_at|date:"g:i A" }}{% else %}Not logged{% endif %}</td>
-        <td data-label="Elapsed">{% if ac.complete %}{{ ac.elapsed_minutes }} min{% else %}–{% endif %}</td>
-        <td data-label="Drop">{% if ac.complete %}{{ ac.drop }}°F{% else %}–{% endif %}</td>
-        <td data-label="Result"><span class="tag {{ ac.status }}">{{ ac.status|capfirst }}</span></td>
+        <td data-label="Outside">{% if ac.outside is not None %}{{ ac.outside }}°F{% else %}Not logged{% endif %}</td>
+        <td data-label="A/C outflow">{% if ac.outflow is not None %}{{ ac.outflow }}°F{% else %}Not logged{% endif %}</td>
+        <td data-label="Difference">{% if ac.difference is not None %}{{ ac.difference }}°F{% else %}–{% endif %}</td>
+        <td data-label="A/C running">{% if ac.minutes_running is not None %}{{ ac.minutes_running }} min{% elif ac.on_at %}On since {{ ac.on_at|date:"g:i A" }}{% else %}A/C on time not logged{% endif %}</td>
       </tr></tbody>
     </table>
-    <small>Pass: a drop of at least 20°F within 10 minutes. Calculated from the two saved readings.</small>
+    <small>Difference is the outside temperature minus the outflow air temperature. Calculated, with no pass or fail.</small>
   </article>
 
   {% if noise.recorded %}
@@ -34,10 +33,6 @@
       (difference {{ noise.reduction }} dB){% endif %}.</p>
   {% endif %}
 
-  <fieldset class="rating">
-    <legend>{{ form.overall_rating.label }} (1 to 4)</legend>
-    {% for radio in form.overall_rating %}<label>{{ radio.tag }} {{ radio.choice_label }}</label>{% endfor %}
-  </fieldset>
   <label>{{ form.overall_notes.label }} {{ form.overall_notes }}</label>
 
   {% if unanswered_total %}

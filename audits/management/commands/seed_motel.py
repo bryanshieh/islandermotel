@@ -46,7 +46,7 @@ STANDARD_ITEMS = [
     (BED, "Dresser", F, "dresser", 1, ""),
     (BED, "Comforter", F, "comforter", 1, ""),
     (BED, "Pillow", F, "pillow", 2, ""),
-    (BED, "Outlet", X, "outlet", 2, "Varies with room and zone"),
+    (BED, "Outlet", X, "outlet", 1, "All outlets in the bedroom"),
     (BED, "Smoke detector", X, "smoke_detector", 1, ""),
     (BED, "Mini fridge", X, "mini_fridge", 1, ""),
     (BATH, "Light", X, "light", 1, ""),
@@ -54,10 +54,9 @@ STANDARD_ITEMS = [
     (BATH, "Toilet", X, "toilet", 1, ""),
     (BATH, "Sink", X, "sink", 1, ""),
     (BATH, "Sink counter", B, "counter", 1, ""),
-    (BATH, "Shower", X, "shower", 1, "Shower head"),
-    (BATH, "Shower handle", X, "shower_handle", 2, "Hot and cold"),
+    (BATH, "Shower", X, "shower", 1, "Shower head and two handles (hot and cold)"),
     (BATH, "Towel rack", X, "towel_rack", 1, ""),
-    (BATH, "Outlet", X, "outlet", 1, "Varies with room"),
+    (BATH, "Outlet", X, "outlet", 1, "All outlets in the bathroom"),
 ]
 
 # "All zones" rows: one record per zone (bedroom and bathroom).

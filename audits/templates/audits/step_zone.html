@@ -3,7 +3,11 @@
 {% block content %}
 {% include "audits/_audit_header.html" %}
 <h3>{{ zone.label }}</h3>
-{% include "audits/_zone_photo.html" %}
+<p><button type="button" id="jump-top" class="outline" onclick="nextUnanswered(true)">Go to first unanswered</button></p>
+{% if zone == "other" %}
+  <p>Decor and anything else in the room that is not on the standard list. Add one item per piece; each can be checked like any other item, or deleted.</p>
+{% endif %}
+{% if has_zone_photo %}{% include "audits/_zone_photo.html" %}{% endif %}
 {% if show_noise %}
   <div class="item" id="noise-inside">
     <h4>Peak noise inside <small>(optional)</small></h4>
@@ -16,38 +20,43 @@
     <span class="saved-note"></span>
   </div>
 {% endif %}
-{% for entry in entries %}
-  <div class="item">
-    <h4>{{ entry.label }}{% if entry.absent %} <span class="tag unanswered">Expected, not in inventory</span>{% endif %}</h4>
-    {% if entry.note %}<div class="item-note">{{ entry.note }}</div>{% endif %}
-    {% if entry.is_floor %}{% include "audits/_material.html" with item=entry.item %}{% endif %}
-    {% for row in entry.checks %}{% include "audits/_check.html" %}{% endfor %}
-    {% if entry.can_delete %}
-      <form method="post" action="{% url 'delete_decor' audit.pk entry.item.pk %}" style="margin:.5rem 0 0"
-            onsubmit="return confirm('Delete this decor piece and its answers in this audit?')">
-        {% csrf_token %}
-        <button type="submit" class="outline secondary" style="width:auto;margin:0">Delete this item</button>
-      </form>
-    {% endif %}
-  </div>
-{% empty %}
-  <p>No items in this zone.</p>
-{% endfor %}
 
-{% if decor_form %}
-  <article id="decor">
-    <h4>Decor</h4>
-    <p>Counted on the first audit: add one record per piece. Each piece then appears in the list above, where it can also be deleted.</p>
-    <form method="post" action="{% url 'add_decor' audit.pk %}">
-      {% csrf_token %}
-      <fieldset role="group">
-        {{ decor_form.description }}
-        <button type="submit" style="white-space:nowrap">Add decor piece</button>
-      </fieldset>
-    </form>
-  </article>
-{% endif %}
+{% include "audits/_zone_items.html" %}
 
-<a role="button" href="{% url 'audit_step' audit.pk next_step %}">Continue</a>
-<a role="button" class="outline" href="{% url 'home' %}">Save and leave</a>
+<p style="margin-top:1.5rem">
+  <a role="button" href="{% url 'audit_step' audit.pk next_step %}">Continue to {{ next_label }}</a>
+  <a role="button" class="outline" href="{% url 'home' %}">Save and leave</a>
+</p>
+
+<button type="button" id="jump-float" onclick="nextUnanswered(false)" hidden>Next unanswered &darr;</button>
+<script>
+  // Jump between unanswered checks. The floating button goes to the next one
+  // below the middle of the screen and wraps round to the first.
+  function unansweredChecks() { return Array.from(document.querySelectorAll('[data-unanswered]')); }
+  function nextUnanswered(fromTop) {
+    var list = unansweredChecks();
+    if (!list.length) return;
+    var middle = window.innerHeight / 2;
+    var target = list[0];
+    if (!fromTop) {
+      for (var i = 0; i < list.length; i++) {
+        if (list[i].getBoundingClientRect().top > middle + 10) { target = list[i]; break; }
+      }
+    }
+    target.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    target.classList.add('flash');
+    setTimeout(function () { target.classList.remove('flash'); }, 1500);
+  }
+  function refreshJump() {
+    var count = unansweredChecks().length;
+    var top = document.getElementById('jump-top');
+    var float = document.getElementById('jump-float');
+    top.disabled = count === 0;
+    top.textContent = count ? 'Go to first unanswered (' + count + ')' : 'All answered';
+    float.hidden = count === 0;
+    float.innerHTML = 'Next unanswered &darr; <strong>' + count + '</strong>';
+  }
+  document.addEventListener('DOMContentLoaded', refreshJump);
+  document.body.addEventListener('htmx:afterSettle', refreshJump);
+</script>
 {% endblock %}

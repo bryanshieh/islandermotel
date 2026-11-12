@@ -5,8 +5,8 @@
   <h2>Room {{ issue.room.number }}: {{ issue.title }}</h2>
   <p>{{ issue.get_bucket_display }} · {{ issue.finding.audit.cycle }} audit · opened {{ issue.date_opened|date:"M j, Y" }}</p>
 </hgroup>
-{% if issue.finding.notes %}<p><strong>Audit note:</strong> {{ issue.finding.notes }}</p>{% endif %}
-{% if issue.finding.photo %}<p><a href="{{ issue.finding.photo.url }}" target="_blank"><img class="thumb" src="{{ issue.finding.photo.url }}" alt="Finding photo"></a></p>{% endif %}
+{% if issue.notes_text %}<p><strong>Audit note:</strong> {{ issue.notes_text }}</p>{% endif %}
+{% for photo in issue.photos %}<p><a href="{{ photo.url }}" target="_blank"><img class="thumb" src="{{ photo.url }}" alt="Finding photo"></a></p>{% endfor %}
 <form method="post">
   {% csrf_token %}
   {{ form.non_field_errors }}
@@ -19,7 +19,7 @@
     <label>Date resolved {{ form.date_resolved }} {{ form.date_resolved.errors }}</label>
   </div>
   <label>Resolution notes {{ form.resolution_notes }}</label>
-  <p><small>The bucket and title come from the audit finding. To change them, edit the finding in the audit.</small></p>
+  <p><small>The bucket and title come from the item's answers in the audit. To change them, edit the item in the audit.</small></p>
   <div class="grid">
     <a role="button" class="outline" href="{{ back }}">Cancel</a>
     <button type="submit">Save issue</button>

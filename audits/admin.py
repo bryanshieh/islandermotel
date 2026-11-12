@@ -57,7 +57,7 @@ class BuildingElementInline(admin.TabularInline):
 
 @admin.register(Room)
 class RoomAdmin(admin.ModelAdmin):
-    list_display = ["number", "room_type", "floor", "square_footage", "bed_configuration", "status", "is_storage"]
+    list_display = ["number", "room_type", "floor", "length_ft", "width_ft", "square_footage", "bed_configuration", "status", "is_storage"]
     list_filter = ["room_type", "floor", "status", "is_storage"]
     search_fields = ["number"]
     inlines = [FurnishingInline, FixtureInline, BuildingElementInline]
@@ -92,7 +92,7 @@ class BuildingElementAdmin(admin.ModelAdmin):
 
 @admin.register(Audit)
 class AuditAdmin(admin.ModelAdmin):
-    list_display = ["room", "cycle_year", "audit_type", "audit_date", "auditor", "overall_rating", "end_time"]
+    list_display = ["room", "cycle_year", "audit_type", "audit_date", "auditor", "ac_on_at", "end_time"]
     list_filter = ["cycle_year", "audit_type", "room__room_type"]
     search_fields = ["room__number"]
 

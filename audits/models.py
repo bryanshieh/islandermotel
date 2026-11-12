@@ -5,6 +5,8 @@ and findings). Condition is never stored on an inventory item; it is a Finding
 on a dated Audit, so history builds up on its own.
 """
 
+from decimal import ROUND_HALF_UP
+
 from django.conf import settings
 from django.core.validators import MaxValueValidator, MinValueValidator
 from django.db import models
@@ -15,6 +17,8 @@ class Zone(models.TextChoices):
     BEDROOM = "bedroom", "Bedroom"
     BATHROOM = "bathroom", "Bathroom"
     EXTERIOR = "exterior", "Exterior"
+    # Items added during an audit that are not on the standard list (decor etc.).
+    OTHER = "other", "Other"
 
 
 class ItemKind(models.TextChoices):
@@ -76,7 +80,7 @@ CATEGORY_LABELS = {
 }
 
 # Flooring types offered as one-tap choices during the audit.
-FLOORING_TYPES = ["Carpet", "Tile", "Tileboard"]
+FLOORING_TYPES = ["Carpet", "Tile", "Tileboard", "LVP"]
 
 # The A/C unit that the two supply-air readings are attached to is the HVAC
 # fixture with this name (the casing and filter are separate HVAC fixtures).
@@ -175,8 +179,12 @@ class Room(models.Model):
     )
     number = models.CharField("room number", max_length=10)
     floor = models.PositiveSmallIntegerField(default=1)
+    length_ft = models.DecimalField(
+        "length (ft)", max_digits=5, decimal_places=1, null=True, blank=True
+    )
+    width_ft = models.DecimalField("width (ft)", max_digits=5, decimal_places=1, null=True, blank=True)
     square_footage = models.PositiveIntegerField(
-        null=True, blank=True, help_text="Measured on the first audit."
+        null=True, blank=True, help_text="Calculated from length and width on the first audit."
     )
     bed_configuration = models.CharField(max_length=50, blank=True)
     bathroom_count = models.PositiveSmallIntegerField(default=1)
@@ -202,6 +210,13 @@ class Room(models.Model):
             from .inventory import generate_inventory
 
             generate_inventory(self)
+
+    def set_dimensions(self, length_ft, width_ft):
+        """Record the measured length and width; square footage is calculated."""
+        self.length_ft = length_ft
+        self.width_ft = width_ft
+        self.square_footage = int((length_ft * width_ft).to_integral_value(ROUND_HALF_UP))
+        self.save(update_fields=["length_ft", "width_ft", "square_footage"])
 
     # A plain method: the `property` field above shadows the builtin decorator here.
     def ac_unit(self):
@@ -327,11 +342,9 @@ class Audit(models.Model):
     start_time = models.DateTimeField(default=timezone.now)
     end_time = models.DateTimeField(null=True, blank=True)
     ambient_temperature_f = models.DecimalField(
-        "ambient temperature (°F)", max_digits=5, decimal_places=1, null=True, blank=True
+        "outside (ambient) temperature (°F)", max_digits=5, decimal_places=1, null=True, blank=True
     )
-    overall_rating = models.PositiveSmallIntegerField(
-        null=True, blank=True, validators=[MinValueValidator(1), MaxValueValidator(4)]
-    )
+    ac_on_at = models.DateTimeField("A/C switched on at", null=True, blank=True)
     overall_notes = models.TextField(blank=True)
     # One optional general photo per zone. Like ambient temperature, it is
     # context for the visit, so it lives on the Audit.
@@ -342,8 +355,8 @@ class Audit(models.Model):
         ordering = ["-audit_date", "-id"]
 
     def zone_photo(self, zone):
-        """The general photo for a zone ("bedroom" or "bathroom")."""
-        return getattr(self, f"{zone}_photo")
+        """The general photo for a zone; only the bedroom and bathroom have one."""
+        return getattr(self, f"{zone}_photo", None)
 
     def __str__(self):
         return f"{self.room} – {self.cycle}"
@@ -369,6 +382,19 @@ class CheckType(models.TextChoices):
     SMELL = "smell", "Smell"
     MEASUREMENT = "measurement", "Measurement"
 
+
+# Order in which an item's checks are shown and listed in an issue title.
+CHECK_ORDER = [
+    CheckType.CONDITION,
+    CheckType.PRESENCE,
+    CheckType.FUNCTION,
+    CheckType.NOISE,
+    CheckType.PEST,
+    CheckType.SMELL,
+    CheckType.CLEANLINESS,
+    CheckType.SECURE,
+    CheckType.MEASUREMENT,
+]
 
 OTHER = "other"
 NOT_APPLICABLE = "n_a"
@@ -421,8 +447,7 @@ class ActionBucket(models.TextChoices):
 # Only these buckets create an Issue. "None" stays on the Finding.
 ISSUE_BUCKETS = (ActionBucket.FIX_NOW, ActionBucket.WORK_ORDER, ActionBucket.CAPEX)
 
-AC_START_LABEL = "A/C supply air start"
-AC_END_LABEL = "A/C supply air end"
+AC_OUTFLOW_LABEL = "A/C outflow air"
 NOISE_OUTSIDE_LABEL = "Peak noise outside"
 NOISE_INSIDE_LABEL = "Peak noise inside (from bed)"
 
@@ -509,33 +534,56 @@ class Finding(models.Model):
             return f"Other: {self.result_other}"
         return RESULT_LABELS.get(self.result, self.result)
 
-    @property
-    def needs_issue(self):
-        return self.is_problem and self.action_bucket in ISSUE_BUCKETS
+    def siblings(self):
+        """This audit's findings about the same item, in check order.
 
-    def issue_title(self):
+        An item can have several checks (condition, works, squeak, bedbug).
+        They share one action and at most one Issue.
+        """
+        group = [self]
+        if self.check_type != CheckType.MEASUREMENT:
+            for field in ("furnishing_id", "fixture_id", "building_element_id", "standard_id"):
+                target_id = getattr(self, field)
+                if target_id:
+                    group = list(
+                        Finding.objects.filter(audit_id=self.audit_id, **{field: target_id}).exclude(
+                            check_type=CheckType.MEASUREMENT
+                        )
+                    )
+                    break
+        return sorted(group, key=lambda f: (CHECK_ORDER.index(f.check_type), f.id or 0))
+
+    def issue_title(self, problems=None):
         zone = dict(Zone.choices).get(self.zone, "")
         where = f" ({zone})" if zone else ""
-        return f"{self.target_label}{where}: {self.result_display}"[:200]
+        results = ", ".join(f.result_display for f in (problems or [self]))
+        return f"{self.target_label}{where}: {results}"[:200]
 
     def save(self, *args, **kwargs):
         super().save(*args, **kwargs)
         self.sync_issue()
 
     def sync_issue(self):
-        """Keep this finding's Issue in step: create, update or close it."""
-        issue = Issue.objects.filter(finding=self).first()
-        if self.needs_issue:
+        """Keep the item's single Issue in step: create, update or close it.
+
+        The Issue hangs off the item's first problem finding and its title
+        lists every problem found on the item.
+        """
+        group = self.siblings()
+        problems = [f for f in group if f.is_problem]
+        bucket = next((f.action_bucket for f in problems if f.action_bucket), "")
+        issue = Issue.objects.filter(finding__in=[f.pk for f in group if f.pk]).first()
+        if problems and bucket in ISSUE_BUCKETS:
+            primary = problems[0]
+            title = primary.issue_title(problems)
             if issue is None:
                 Issue.objects.create(
-                    finding=self,
-                    room=self.audit.room,
-                    title=self.issue_title(),
-                    bucket=self.action_bucket,
+                    finding=primary, room=self.audit.room, title=title, bucket=bucket
                 )
                 return
-            issue.title = self.issue_title()
-            issue.bucket = self.action_bucket
+            issue.finding = primary
+            issue.title = title
+            issue.bucket = bucket
             # Reopen only if the app closed it; a status Bryan set is left alone.
             if issue.status == IssueStatus.DONE and issue.resolution_notes == AUTO_CLOSE_NOTE:
                 issue.status = IssueStatus.OPEN
@@ -589,3 +637,16 @@ class Issue(models.Model):
 
     def __str__(self):
         return f"{self.room}: {self.title}"
+
+    @property
+    def item_findings(self):
+        return self.finding.siblings()
+
+    @property
+    def notes_text(self):
+        """Audit notes recorded on the item, joined."""
+        return "; ".join(f.notes for f in self.item_findings if f.notes)
+
+    @property
+    def photos(self):
+        return [f.photo for f in self.item_findings if f.photo]

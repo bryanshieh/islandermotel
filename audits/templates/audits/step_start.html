@@ -3,39 +3,51 @@
 {% block content %}
 {% include "audits/_audit_header.html" %}
 <h3>Start</h3>
-<div class="item">
-  <h4>Room smell</h4>
-  <div class="item-note">On walking in, before the A/C runs.</div>
-  {% with row=smell %}{% include "audits/_check.html" %}{% endwith %}
-</div>
+{% include "audits/_item.html" %}
 <form method="post">
   {% csrf_token %}
   {{ form.non_field_errors }}
-  <label>{{ form.ambient_temperature_f.label }} {{ form.ambient_temperature_f }}</label>
+  <label>{{ form.ambient_temperature_f.label }} {{ form.ambient_temperature_f }}
+    <small>Compared with the A/C outflow air at wrap-up.</small></label>
   {{ form.ambient_temperature_f.errors }}
   <label>{{ form.noise_outside_db.label }} {{ form.noise_outside_db }}
     <small>Highest reading on the sound meter, standing outside the room.</small></label>
   {{ form.noise_outside_db.errors }}
-  {% if ask_square_footage %}
-    <label>{{ form.square_footage.label }} {{ form.square_footage }}
-      <small>Measured once, on the room's first audit. Saved on the room.</small></label>
-    {{ form.square_footage.errors }}
+  {% if ask_dimensions %}
+    <article>
+      <h4>Room size</h4>
+      <div class="grid">
+        <label>{{ form.room_length_ft.label }} {{ form.room_length_ft }}</label>
+        <label>{{ form.room_width_ft.label }} {{ form.room_width_ft }}</label>
+      </div>
+      {{ form.room_length_ft.errors }}{{ form.room_width_ft.errors }}
+      <p>Square footage: <strong id="sqft">{{ room.square_footage|default_if_none:"–" }}</strong>
+        <small>(length × width, calculated; measured once, on the room's first audit)</small></p>
+    </article>
   {% endif %}
   <article>
-    <h4>A/C test: first reading</h4>
-    <p>Start the A/C, then log the supply-air temperature. The room passes if the
-       temperature drops at least 20°F within 10 minutes.</p>
-    {% if not has_ac_unit %}<p><span class="tag unanswered">This room has no A/C unit in its inventory; the reading is still saved.</span></p>{% endif %}
-    <div class="grid">
-      <label>{{ form.ac_start_value.label }} {{ form.ac_start_value }}</label>
-      <label>{{ form.ac_start_time.label }} {{ form.ac_start_time }}
-        <small>Leave empty to use the time you press Save.</small></label>
-    </div>
-    {{ form.ac_start_value.errors }}{{ form.ac_start_time.errors }}
+    <h4>A/C on</h4>
+    <p>Switch the A/C on and record the time. Its outflow air temperature is read at wrap-up.</p>
+    {% include "audits/_ac_on.html" %}
+    {{ form.ac_on_time.errors }}
   </article>
   <div class="grid">
     <button type="submit" name="action" value="save" class="outline">Save</button>
     <button type="submit" name="action" value="continue">Save and go to Bedroom</button>
   </div>
 </form>
+<script>
+  (function () {
+    var length = document.getElementById('{{ form.room_length_ft.id_for_label }}');
+    var width = document.getElementById('{{ form.room_width_ft.id_for_label }}');
+    var out = document.getElementById('sqft');
+    if (!length || !width || !out) return;
+    function update() {
+      var area = parseFloat(length.value) * parseFloat(width.value);
+      if (area > 0) out.textContent = Math.round(area);
+    }
+    length.addEventListener('input', update);
+    width.addEventListener('input', update);
+  })();
+</script>
 {% endblock %}
