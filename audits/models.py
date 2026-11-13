@@ -10,6 +10,8 @@ from decimal import ROUND_HALF_UP
 from django.conf import settings
 from django.core.validators import MaxValueValidator, MinValueValidator
 from django.db import models
+from django.db.models.signals import post_delete
+from django.dispatch import receiver
 from django.utils import timezone
 
 
@@ -34,6 +36,7 @@ class FurnishingCategory(models.TextChoices):
     BOX_SPRING = "box_spring", "Box spring"
     COMFORTER = "comforter", "Comforter"
     PILLOW = "pillow", "Pillow"
+    BEDDING = "bedding", "Bedding"
     CHAIR = "chair", "Chair"
     TABLE = "table", "Table"
     DRESSER = "dresser", "Dresser"
@@ -408,6 +411,7 @@ RESULT_OPTIONS = {
         ("damaged", "Damaged"),
         ("missing", "Missing"),
         ("not_working", "Not working"),
+        ("intermittent", "Intermittent"),
         (NOT_APPLICABLE, "N/A"),
         (OTHER, "Other"),
     ],
@@ -448,6 +452,7 @@ class ActionBucket(models.TextChoices):
 ISSUE_BUCKETS = (ActionBucket.FIX_NOW, ActionBucket.WORK_ORDER, ActionBucket.CAPEX)
 
 AC_OUTFLOW_LABEL = "A/C outflow air"
+PILLOWS_LABEL = "Pillows to replace"
 NOISE_OUTSIDE_LABEL = "Peak noise outside"
 NOISE_INSIDE_LABEL = "Peak noise inside (from bed)"
 
@@ -490,7 +495,6 @@ class Finding(models.Model):
     unit = models.CharField(max_length=10, blank=True)
     measured_at = models.DateTimeField(null=True, blank=True)
     action_bucket = models.CharField(max_length=20, choices=ActionBucket.choices, blank=True)
-    photo = models.ImageField(upload_to="findings/%Y/", null=True, blank=True)
     notes = models.TextField(blank=True)
 
     class Meta:
@@ -556,8 +560,19 @@ class Finding(models.Model):
     def issue_title(self, problems=None):
         zone = dict(Zone.choices).get(self.zone, "")
         where = f" ({zone})" if zone else ""
-        results = ", ".join(f.result_display for f in (problems or [self]))
+        group = problems or [self]
+        results = ", ".join(f.result_display for f in group)
+        pillows = next((f.pillows_to_replace for f in self.siblings() if f.pillows_to_replace), 0)
+        if pillows:
+            results += f" (replace {pillows} pillow{'s' if pillows != 1 else ''})"
         return f"{self.target_label}{where}: {results}"[:200]
+
+    @property
+    def pillows_to_replace(self):
+        """The count recorded on a bedding item, or 0."""
+        if self.measurement_label == PILLOWS_LABEL and self.measured_value:
+            return int(self.measured_value)
+        return 0
 
     def save(self, *args, **kwargs):
         super().save(*args, **kwargs)
@@ -596,6 +611,26 @@ class Finding(models.Model):
             if not issue.resolution_notes:
                 issue.resolution_notes = AUTO_CLOSE_NOTE
             issue.save()
+
+
+class FindingPhoto(models.Model):
+    """A photo of an item, taken during an audit. An item can have several."""
+
+    finding = models.ForeignKey(Finding, on_delete=models.CASCADE, related_name="photos")
+    photo = models.ImageField(upload_to="findings/%Y/")
+
+    class Meta:
+        ordering = ["id"]
+
+    def __str__(self):
+        return self.photo.name
+
+
+@receiver(post_delete, sender=FindingPhoto)
+def remove_photo_file(sender, instance, **kwargs):
+    """Delete the image file when its record goes, so files do not pile up."""
+    if instance.photo:
+        instance.photo.delete(save=False)
 
 
 class IssueBucket(models.TextChoices):
@@ -649,4 +684,4 @@ class Issue(models.Model):
 
     @property
     def photos(self):
-        return [f.photo for f in self.item_findings if f.photo]
+        return [p.photo for f in self.item_findings for p in f.photos.all()]

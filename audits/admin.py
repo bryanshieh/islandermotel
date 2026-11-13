@@ -5,6 +5,7 @@ from .models import (
     Audit,
     BuildingElement,
     Finding,
+    FindingPhoto,
     Fixture,
     Furnishing,
     Issue,
@@ -97,8 +98,14 @@ class AuditAdmin(admin.ModelAdmin):
     search_fields = ["room__number"]
 
 
+class FindingPhotoInline(admin.TabularInline):
+    model = FindingPhoto
+    extra = 0
+
+
 @admin.register(Finding)
 class FindingAdmin(admin.ModelAdmin):
+    inlines = [FindingPhotoInline]
     list_display = ["audit", "target_label", "check_type", "result", "action_bucket", "measured_value"]
     list_filter = ["check_type", "result", "action_bucket", "audit__cycle_year"]
     search_fields = ["audit__room__number"]

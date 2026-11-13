@@ -37,7 +37,7 @@
   {% endfor %}
 
   {% if entry.answered %}
-    {# One action, note and photo for the whole item. #}
+    {# One action and note for the whole item, and any number of photos. #}
     {% if entry.problems %}
       <div class="details-box">
         <span class="check-label">Action</span>
@@ -62,22 +62,34 @@
            hx-on::after-request="this.nextElementSibling.textContent = event.detail.successful ? 'Saved' : 'Not saved, try again'">
     <span class="saved-note"></span>
 
-    <details class="details-box" {% if entry.photo or photo_error %}open{% endif %}>
-      <summary>Photo (optional)</summary>
+    {% if entry.counts_pillows and not entry.not_applicable %}
+      <label style="margin-top:.5rem">Pillows to replace
+        <input type="number" name="pillows" min="0" max="12" step="1" inputmode="numeric"
+               value="{{ entry.pillows }}" style="max-width:8rem;margin-bottom:.25rem"
+               hx-post="{{ update_url }}" hx-trigger="change, keyup changed delay:800ms" hx-swap="none"
+               hx-vals='{"item": "{{ entry.key }}"}'
+               hx-on::after-request="this.nextElementSibling.textContent = event.detail.successful ? 'Saved' : 'Not saved: enter a number from 0 to 12'">
+        <span class="saved-note"></span>
+      </label>
+    {% endif %}
+
+    <details class="details-box" {% if entry.photos or photo_error %}open{% endif %}>
+      <summary>Photos (optional){% if entry.photos %} · {{ entry.photos|length }}{% endif %}</summary>
       {% if photo_error %}<p><span class="tag fail">{{ photo_error }}</span></p>{% endif %}
-      {% if entry.photo %}
+      {% for photo in entry.photos %}
         <p>
-          <a href="{{ entry.photo.url }}" target="_blank"><img class="thumb" src="{{ entry.photo.url }}" alt="Photo of {{ entry.label }}"></a>
+          <a href="{{ photo.photo.url }}" target="_blank"><img class="thumb" src="{{ photo.photo.url }}" alt="Photo of {{ entry.label }}"></a>
           <button type="button" class="outline secondary" style="width:auto;margin-left:.5rem"
                   hx-post="{{ update_url }}"
-                  hx-vals='{"item": "{{ entry.key }}", "remove_photo": "1"}'
+                  hx-vals='{"item": "{{ entry.key }}", "remove_photo": "{{ photo.pk }}"}'
                   hx-target="#{{ entry.dom_id }}" hx-swap="outerHTML">Remove photo</button>
         </p>
-      {% endif %}
+      {% endfor %}
       <form hx-post="{{ update_url }}" hx-encoding="multipart/form-data" hx-trigger="change"
             hx-target="#{{ entry.dom_id }}" hx-swap="outerHTML">
         <input type="hidden" name="item" value="{{ entry.key }}">
-        <input type="file" name="photo" accept="image/*" aria-label="Photo">
+        <label>{% if entry.photos %}Add another photo{% else %}Add a photo{% endif %}
+          <input type="file" name="photo" accept="image/*" multiple aria-label="Add a photo"></label>
       </form>
     </details>
   {% endif %}

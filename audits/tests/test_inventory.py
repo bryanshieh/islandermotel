@@ -99,12 +99,16 @@ class SeedCommandTests(TestCase):
 
     def test_standard_room_inventory(self):
         room = Room.objects.get(number="101")
-        self.assertEqual(room.furnishings.count(), 11)
-        self.assertEqual(room.fixtures.count(), 20)
-        self.assertEqual(room.building_elements.count(), 14)
+        self.assertEqual(room.furnishings.count(), 9)
+        self.assertEqual(room.fixtures.count(), 16)
+        self.assertEqual(room.building_elements.count(), 13)
         self.assertEqual(room.furnishings.filter(category="chair").count(), 2)
-        self.assertEqual(room.furnishings.filter(category="pillow").count(), 2)
-        self.assertEqual(room.fixtures.filter(name="Sconce or lamp").count(), 2)
+        # Rows that are fixed or replaced together are one record.
+        self.assertEqual(room.furnishings.filter(category="bedding").count(), 1)
+        self.assertFalse(room.furnishings.filter(category__in=["pillow", "comforter"]).exists())
+        self.assertEqual(room.fixtures.filter(name="Sconces and lamps").count(), 1)
+        self.assertEqual(list(room.fixtures.filter(category="hvac").values_list("name", flat=True)), ["A/C"])
+        self.assertEqual(list(room.fixtures.filter(category="heater").values_list("name", flat=True)), ["Heater"])
         self.assertEqual(room.fixtures.filter(category="outlet", zone="bedroom").count(), 1)
         self.assertEqual(room.fixtures.filter(category="outlet", zone="bathroom").count(), 1)
         self.assertEqual(room.fixtures.filter(category="mirror", zone="bathroom").count(), 1)
@@ -115,7 +119,7 @@ class SeedCommandTests(TestCase):
         )
         self.assertFalse(room.furnishings.filter(category="decor").exists())
         self.assertIsNone(room.square_footage)
-        for element in ("wall", "floor", "window", "trim"):
+        for element in ("wall", "floor", "window", "trim", "ceiling"):
             self.assertEqual(
                 sorted(room.building_elements.filter(element=element).values_list("zone", flat=True)),
                 ["bathroom", "bedroom"],
@@ -128,7 +132,7 @@ class SeedCommandTests(TestCase):
         self.assertFalse(room.building_elements.filter(element__in=["hinge", "threshold"]).exists())
         self.assertEqual(
             sorted(room.building_elements.filter(element="signage").values_list("zone", flat=True)),
-            ["bathroom", "bedroom"],
+            ["bedroom"],  # one signage row for the whole room
         )
         for model in (Furnishing, Fixture, BuildingElement, RoomStandard):
             self.assertFalse(model.objects.filter(zone="entry").exists(), model)
@@ -136,18 +140,18 @@ class SeedCommandTests(TestCase):
 
     def test_every_guest_room_matches_the_standard_except_room_9(self):
         for room in Room.objects.filter(is_storage=False).exclude(number="9"):
-            self.assertEqual(room.furnishings.count(), 11, room)
-            self.assertEqual(room.fixtures.count(), 20, room)
-            self.assertEqual(room.building_elements.count(), 14, room)
+            self.assertEqual(room.furnishings.count(), 9, room)
+            self.assertEqual(room.fixtures.count(), 16, room)
+            self.assertEqual(room.building_elements.count(), 13, room)
 
     def test_room_9_exception(self):
         room = Room.objects.get(number="9")
         for category in ("bed_frame", "headboard", "mattress", "box_spring", "dresser"):
             self.assertEqual(room.furnishings.filter(category=category).count(), 2, category)
-        self.assertEqual(room.furnishings.filter(category="pillow").count(), 4)
+        self.assertEqual(room.furnishings.filter(category="bedding").count(), 2)  # a set per bed
         self.assertEqual(room.furnishings.filter(category="chair").count(), 2)
-        self.assertEqual(room.furnishings.count(), 18)
-        self.assertEqual(room.fixtures.count(), 20)
+        self.assertEqual(room.furnishings.count(), 15)
+        self.assertEqual(room.fixtures.count(), 16)
         # Room 10 is also XLRG but follows the standard.
         self.assertEqual(Room.objects.get(number="10").furnishings.filter(category="mattress").count(), 1)
 

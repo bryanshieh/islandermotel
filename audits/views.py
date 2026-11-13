@@ -19,12 +19,14 @@ from .models import (
     FLOORING_TYPES,
     NOT_APPLICABLE,
     OTHER,
+    PILLOWS_LABEL,
     RESULT_OPTIONS,
     ActionBucket,
     Audit,
     BuildingElement,
     BuildingElementType,
     Finding,
+    FindingPhoto,
     Furnishing,
     FurnishingCategory,
     Issue,
@@ -46,6 +48,7 @@ STEPS = [
     ("wrapup", "Wrap-up"),
 ]
 STEP_SLUGS = [slug for slug, _ in STEPS]
+MAX_PILLOWS = 12
 PHOTO_ERROR = "That file is not a photo the app can read. Try a JPEG or PNG."
 
 
@@ -302,7 +305,7 @@ def item_update(request, pk):
     """Autosave one tap or field change on one item; returns the item's HTML.
 
     `item` names the item. A result (or an Other description) also needs
-    `key`, the check it answers. The action, note and photo belong to the
+    `key`, the check it answers. The action, note and photos belong to the
     item as a whole.
     """
     audit = get_object_or_404(Audit.objects.select_related("room", "room__room_type"), pk=pk)
@@ -334,7 +337,10 @@ def item_update(request, pk):
         finding.save()
         if row is entry.anchor and finding.result == NOT_APPLICABLE:
             # Nothing to do on an item that is not applicable: clear its other
-            # checks. The note and photo stay.
+            # checks and any pillow count. The note and photos stay.
+            if finding.measurement_label == PILLOWS_LABEL:
+                finding.measurement_label, finding.measured_value, finding.unit = "", None, ""
+                finding.save()
             for other in entry.checks[1:]:
                 if other.finding and (other.finding.result or other.finding.action_bucket):
                     other.finding.result = ""
@@ -351,10 +357,12 @@ def item_update(request, pk):
             finding.save()
 
     photo_error = ""
+    uploads = request.FILES.getlist("photo")
     wants_anchor = (
         ("notes" in post and post["notes"].strip() != entry.notes)
-        or "photo" in request.FILES
+        or uploads
         or post.get("remove_photo")
+        or "pillows" in post
     )
     if wants_anchor:
         anchor = entry.anchor.get_or_build_finding(audit)
@@ -362,18 +370,22 @@ def item_update(request, pk):
             anchor.refresh_from_db()  # pick up a result saved above
         if "notes" in post:
             anchor.notes = post["notes"].strip()
-        if post.get("remove_photo") and anchor.photo:
-            anchor.photo.delete(save=False)
-        if "photo" in request.FILES:
+        if "pillows" in post and entry.counts_pillows:
+            count = to_int(post["pillows"] or 0)
+            if count is None or not 0 <= count <= MAX_PILLOWS:
+                return HttpResponseBadRequest(f"Enter a number from 0 to {MAX_PILLOWS}")
+            anchor.measurement_label = PILLOWS_LABEL if count else ""
+            anchor.measured_value = count or None
+            anchor.unit = "pillows" if count else ""
+        anchor.save()
+        if post.get("remove_photo"):
+            # Deleting the record also deletes its file.
+            FindingPhoto.objects.filter(finding=anchor, pk=to_int(post["remove_photo"])).delete()
+        for upload in uploads:
             try:
-                photo = shrink_photo(request.FILES["photo"])
+                FindingPhoto.objects.create(finding=anchor, photo=shrink_photo(upload))
             except NotAPhoto:
                 photo_error = PHOTO_ERROR
-            else:
-                if anchor.photo:
-                    anchor.photo.delete(save=False)  # replace, do not pile up files
-                anchor.photo = photo
-        anchor.save()
 
     return render(
         request,

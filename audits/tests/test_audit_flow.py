@@ -173,8 +173,10 @@ class ZoneChecklistTests(FlowTestCase):
     def test_every_zone_lists_every_item_with_nothing_preselected(self):
         counts = checklist.zone_counts(self.audit)
         self.assertEqual(list(counts), ["start", "bedroom", "bathroom", "other"])
-        # bathroom: 7 fixtures (5 with a "works" check) + 7 building elements
-        self.assertEqual(counts["bathroom"], (19, 19))
+        # bathroom: 7 fixtures + 6 building elements, one check each
+        self.assertEqual(counts["bathroom"], (13, 13))
+        # bedroom: 27 = 9 fixtures + 10 furnishings + 7 building + squeak + bedbug
+        self.assertEqual(counts["bedroom"], (27, 27))
         self.assertEqual(counts["other"], (0, 0))
         for zone in ("bedroom", "bathroom"):
             response = self.client.get(f"/audits/{self.audit.pk}/{zone}/")
@@ -190,20 +192,34 @@ class ZoneChecklistTests(FlowTestCase):
             for entry in entries
             for row in entry.checks
         }
-        self.assertIn(("Bed frame", "noise"), rows)
-        self.assertIn(("Mattress", "noise"), rows)
-        self.assertIn(("Mattress", "pest"), rows)
-        self.assertNotIn(("Bed frame", "pest"), rows)
-        for name in ("TV", "Mini fridge", "A/C", "Shower", "Outlet", "Smoke detector"):
-            self.assertIn((name, "function"), rows)
-        self.assertIn(("Entry door", "condition"), rows)
-        self.assertIn(("Chair #1", "condition"), rows)
-        self.assertIn(("Chair #2", "condition"), rows)
-        for name in ("A/C filter", "Towel rack", "Chair #1"):
-            self.assertNotIn((name, "function"), rows)
         labels = {label for label, _ in rows}
-        self.assertFalse({l for l in labels if l.startswith("Shower handle")})
-        self.assertNotIn("Outlet #1", labels)  # one outlet row per zone
+        # Whether it works is part of the condition check now.
+        self.assertFalse({row for row in rows if row[1] == "function"})
+        # One squeak test for the whole bed, on the frame; bedbugs on the mattress.
+        self.assertEqual({l for l, c in rows if c == "noise"}, {"Bed frame"})
+        self.assertEqual({l for l, c in rows if c == "pest"}, {"Mattress"})
+        # Consolidated rows.
+        for name in ("A/C", "Heater", "Sconces and lamps", "Bedding", "Signage", "Outlet"):
+            self.assertIn((name, "condition"), rows)
+        for gone in ("A/C casing", "A/C filter", "Heater pilot", "Comforter", "Pillow #1",
+                     "Sconce or lamp #1", "Shower handle #1"):
+            self.assertNotIn(gone, labels)
+        # Still separate.
+        for name in ("Chair #1", "Chair #2", "Headboard", "Box spring", "Walls", "Trim", "Ceiling"):
+            self.assertIn((name, "condition"), rows)
+        bathroom = {e.label for e in checklist.build_zone(self.audit, "bathroom")}
+        self.assertNotIn("Signage", bathroom)  # one signage row for the whole room
+
+    def test_condition_covers_whether_it_works(self):
+        page = self.client.get(f"/audits/{self.audit.pk}/bedroom/")
+        self.assertNotContains(page, "Works?")
+        for label in ("Not working", "Intermittent"):
+            self.assertContains(page, f">{label}</button>")
+        response = self.tap("TV", "intermittent")
+        self.assertContains(response, "bad selected")
+        self.assertContains(response, "Pick an action")
+        self.act("TV", "work_order")
+        self.assertEqual(Issue.objects.get().title, "TV (Bedroom): Intermittent")
 
     def test_tapping_a_result_saves_a_finding(self):
         response = self.tap("TV", "ok")
@@ -216,7 +232,7 @@ class ZoneChecklistTests(FlowTestCase):
 
     def test_squeak_and_bedbug_checks_are_pass_or_fail(self):
         response = self.client.get(f"/audits/{self.audit.pk}/bedroom/")
-        self.assertContains(response, "Squeak test", count=2)
+        self.assertContains(response, "Squeak test (whole bed)", count=1)
         self.assertContains(response, "Bedbug check", count=1)
         self.tap("Mattress", "fail", check="pest")
         self.assertEqual(Finding.objects.get().check_type, CheckType.PEST)
@@ -249,19 +265,57 @@ class ZoneChecklistTests(FlowTestCase):
         self.assertContains(response, "Unanswered")
         self.assertEqual(Issue.objects.get().status, IssueStatus.DONE)
 
-    def test_note_and_photo_belong_to_the_item(self):
-        self.tap("Toilet", "ok")
-        self.tap("Toilet", "not_working", check="function")
-        self.post_item("Toilet", notes="Runs constantly")
-        photo = SimpleUploadedFile("lid.gif", PIXEL, content_type="image/gif")
-        response = self.post_item("Toilet", photo=photo)
+    def test_note_and_photos_belong_to_the_item(self):
+        self.tap("Mattress", "ok")
+        self.tap("Mattress", "fail", check="pest")
+        self.post_item("Mattress", notes="Stain on left side")
+        photo = SimpleUploadedFile("m.gif", PIXEL, content_type="image/gif")
+        response = self.post_item("Mattress", photo=photo)
         self.assertContains(response, "Remove photo", count=1)
         self.assertContains(response, 'type="file"', count=1)  # one photo picker per item
-        entry = self.entry("Toilet")
-        self.assertEqual(entry.notes, "Runs constantly")
-        self.assertTrue(entry.photo.name.startswith("findings/"))
-        self.post_item("Toilet", remove_photo="1")
-        self.assertFalse(self.entry("Toilet").photo)
+        entry = self.entry("Mattress")
+        self.assertEqual(entry.notes, "Stain on left side")
+        self.assertEqual(len(entry.photos), 1)
+        self.assertTrue(entry.photos[0].photo.name.startswith("findings/"))
+        self.post_item("Mattress", remove_photo=str(entry.photos[0].pk))
+        self.assertEqual(self.entry("Mattress").photos, [])
+
+    def test_an_item_can_have_several_photos(self):
+        self.tap("Sconces and lamps", "damaged")
+        for name in ("left.gif", "right.gif"):
+            self.post_item(
+                "Sconces and lamps", photo=SimpleUploadedFile(name, PIXEL, content_type="image/gif")
+            )
+        # Two more chosen together from the photo library.
+        response = self.client.post(
+            self.url,
+            {
+                "item": self.entry("Sconces and lamps").key,
+                "photo": [
+                    SimpleUploadedFile("a.gif", PIXEL, content_type="image/gif"),
+                    SimpleUploadedFile("b.gif", PIXEL, content_type="image/gif"),
+                ],
+            },
+        )
+        self.assertContains(response, "Remove photo", count=4)
+        self.assertContains(response, "Add another photo")
+        photos = self.entry("Sconces and lamps").photos
+        self.assertEqual(len(photos), 4)
+        storage, removed = photos[1].photo.storage, photos[1].photo.name
+        self.post_item("Sconces and lamps", remove_photo=str(photos[1].pk))
+        left = self.entry("Sconces and lamps").photos
+        self.assertEqual([p.pk for p in left], [photos[0].pk, photos[2].pk, photos[3].pk])
+        self.assertFalse(storage.exists(removed))  # the file goes with it
+        self.act("Sconces and lamps", "fix_now")
+        self.assertEqual(len(Issue.objects.get().photos), 3)
+
+    def test_a_photo_can_only_be_removed_from_its_own_item(self):
+        self.tap("TV", "damaged")
+        self.tap("Mirror", "damaged")
+        self.post_item("TV", photo=SimpleUploadedFile("t.gif", PIXEL, content_type="image/gif"))
+        photo = self.entry("TV").photos[0]
+        self.post_item("Mirror", remove_photo=str(photo.pk))
+        self.assertEqual(len(self.entry("TV").photos), 1)
 
     def test_a_note_sent_along_with_a_tap_is_saved(self):
         self.tap("Mirror", "ok")
@@ -344,11 +398,11 @@ class OneActionPerItemTests(FlowTestCase):
         self.assertEqual(self.act("TV", "monitor").status_code, 400)
 
     def test_two_problems_on_one_item_ask_for_one_action(self):
-        self.tap("TV", "damaged")
-        response = self.tap("TV", "not_working", check="function")
+        self.tap("Mattress", "worn")
+        response = self.tap("Mattress", "fail", check="pest")
         self.assertContains(response, ">Action<", count=1)
         self.assertContains(response, "Pick an action", count=1)
-        response = self.act("TV", "work_order")
+        response = self.act("Mattress", "work_order")
         self.assertNotContains(response, "Pick an action")
         self.assertContains(response, "bucket selected", count=1)
         self.assertEqual(
@@ -356,33 +410,33 @@ class OneActionPerItemTests(FlowTestCase):
         )
 
     def test_two_problems_on_one_item_make_one_issue(self):
-        self.tap("TV", "damaged")
-        self.tap("TV", "not_working", check="function")
-        self.act("TV", "work_order")
+        self.tap("Mattress", "worn")
+        self.tap("Mattress", "fail", check="pest")
+        self.act("Mattress", "work_order")
         issue = Issue.objects.get()
-        self.assertEqual(issue.title, "TV (Bedroom): Damaged, Not working")
+        self.assertEqual(issue.title, "Mattress (Bedroom): Worn, Fail")
         self.assertEqual(issue.bucket, "work_order")
 
     def test_a_second_problem_takes_the_action_already_picked(self):
-        self.tap("TV", "damaged")
-        self.act("TV", "capex")
-        response = self.tap("TV", "not_working", check="function")
+        self.tap("Mattress", "worn")
+        self.act("Mattress", "capex")
+        response = self.tap("Mattress", "fail", check="pest")
         self.assertNotContains(response, "Pick an action")
         issue = Issue.objects.get()
-        self.assertEqual((issue.bucket, issue.title), ("capex", "TV (Bedroom): Damaged, Not working"))
+        self.assertEqual((issue.bucket, issue.title), ("capex", "Mattress (Bedroom): Worn, Fail"))
 
     def test_issue_survives_when_the_first_problem_is_fixed_but_another_remains(self):
-        self.tap("TV", "damaged")
-        self.tap("TV", "not_working", check="function")
-        self.act("TV", "fix_now")
+        self.tap("Mattress", "worn")
+        self.tap("Mattress", "fail", check="pest")
+        self.act("Mattress", "fix_now")
         issue = Issue.objects.get()
         issue.priority = "high"
         issue.save()
-        self.tap("TV", "ok")  # condition is fine after all; it still does not work
+        self.tap("Mattress", "ok")  # condition is fine after all; bedbugs remain
         issue = Issue.objects.get()
-        self.assertEqual(issue.title, "TV (Bedroom): Not working")
+        self.assertEqual(issue.title, "Mattress (Bedroom): Fail")
         self.assertEqual((issue.status, issue.priority), (IssueStatus.OPEN, "high"))
-        self.tap("TV", "working", check="function")
+        self.tap("Mattress", "pass", check="pest")
         self.assertEqual(Issue.objects.get().status, IssueStatus.DONE)
 
     def test_action_is_per_item_not_shared_between_items(self):
@@ -401,27 +455,27 @@ class NotApplicableTests(FlowTestCase):
         self.assertNotContains(response, "Pick an action")
         self.assertNotContains(response, ">Action<")
         # N/A is offered on condition checks only.
-        self.assertEqual(self.tap("TV", "n_a", check="function").status_code, 400)
+        self.assertEqual(self.tap("Mattress", "n_a", check="pest").status_code, 400)
 
     def test_na_hides_and_clears_the_items_other_checks(self):
-        self.tap("Mini fridge", "damaged")
-        self.tap("Mini fridge", "not_working", check="function")
-        self.act("Mini fridge", "capex")
+        self.tap("Bed frame", "damaged")
+        self.tap("Bed frame", "fail", check="noise")
+        self.act("Bed frame", "capex")
         self.assertEqual(Issue.objects.get().status, IssueStatus.OPEN)
 
-        response = self.tap("Mini fridge", "n_a")
-        self.assertNotContains(response, "Works?")
+        response = self.tap("Bed frame", "n_a")
+        self.assertNotContains(response, "Squeak test")
         self.assertNotContains(response, "Unanswered")
-        entry = self.entry("Mini fridge")
+        entry = self.entry("Bed frame")
         self.assertEqual(len(entry.visible_checks), 1)
         self.assertEqual(entry.unanswered, 0)
         results = {f.check_type: (f.result, f.action_bucket) for f in Finding.objects.all()}
-        self.assertEqual(results, {"condition": ("n_a", ""), "function": ("", "")})
+        self.assertEqual(results, {"condition": ("n_a", ""), "noise": ("", "")})
         self.assertEqual(Issue.objects.get().status, IssueStatus.DONE)
 
     def test_na_item_does_not_count_as_unanswered(self):
         total, unanswered = checklist.zone_counts(self.audit)["bedroom"]
-        self.tap("Mini fridge", "n_a")  # had two checks: condition and works
+        self.tap("Bed frame", "n_a")  # had two checks: condition and squeak
         self.assertEqual(checklist.zone_counts(self.audit)["bedroom"], (total - 1, unanswered - 2))
 
     def test_na_keeps_the_note_and_photo(self):
@@ -435,10 +489,59 @@ class NotApplicableTests(FlowTestCase):
         self.assertContains(response, 'type="file"')
 
     def test_changing_na_back_shows_the_other_checks_again(self):
-        self.tap("Mini fridge", "n_a")
-        response = self.tap("Mini fridge", "ok")
-        self.assertContains(response, "Works?")
+        self.tap("Bed frame", "n_a")
+        response = self.tap("Bed frame", "ok")
+        self.assertContains(response, "Squeak test")
         self.assertContains(response, "Unanswered", count=1)
+
+
+class BeddingTests(FlowTestCase):
+    def test_bedding_is_one_row_with_a_pillows_to_replace_count(self):
+        page = self.client.get(f"/audits/{self.audit.pk}/bedroom/")
+        self.assertContains(page, "Comforter and 2 pillows")
+        self.assertNotContains(page, "Pillows to replace")  # appears once answered
+        response = self.tap("Bedding", "worn")
+        self.assertContains(response, "Pillows to replace", count=1)
+        self.assertNotContains(self.tap("TV", "worn"), "Pillows to replace")
+
+    def test_pillow_count_is_saved_and_shown_in_the_issue(self):
+        self.tap("Bedding", "worn")
+        self.act("Bedding", "fix_now")
+        self.assertEqual(self.post_item("Bedding", pillows="2").status_code, 200)
+        self.assertEqual(self.entry("Bedding").pillows, 2)
+        finding = Finding.objects.get()
+        self.assertEqual(
+            (finding.measurement_label, finding.measured_value, finding.unit),
+            ("Pillows to replace", Decimal("2"), "pillows"),
+        )
+        self.assertEqual(Issue.objects.get().title, "Bedding (Bedroom): Worn (replace 2 pillows)")
+        self.post_item("Bedding", pillows="1")
+        self.assertEqual(Issue.objects.get().title, "Bedding (Bedroom): Worn (replace 1 pillow)")
+        self.post_item("Bedding", pillows="0")
+        self.assertEqual(Issue.objects.get().title, "Bedding (Bedroom): Worn")
+        self.assertEqual(self.entry("Bedding").pillows, 0)
+
+    def test_pillow_count_is_validated_and_only_for_bedding(self):
+        self.tap("Bedding", "worn")
+        for bad in ("13", "-1", "lots"):
+            self.assertEqual(self.post_item("Bedding", pillows=bad).status_code, 400, bad)
+        self.assertEqual(self.entry("Bedding").pillows, 0)
+        self.tap("TV", "worn")
+        self.post_item("TV", pillows="3")
+        self.assertEqual(self.entry("TV").pillows, 0)
+
+    def test_na_clears_the_pillow_count(self):
+        self.tap("Bedding", "worn")
+        self.post_item("Bedding", pillows="2")
+        response = self.tap("Bedding", "n_a")
+        self.assertNotContains(response, "Pillows to replace")
+        self.assertEqual(self.entry("Bedding").pillows, 0)
+
+    def test_room_9_has_a_bedding_row_per_bed(self):
+        audit = Audit.objects.create(room=Room.objects.get(number="9"), cycle_year=2026)
+        labels = [e.label for e in checklist.build_zone(audit, "bedroom")]
+        self.assertIn("Bedding #1", labels)
+        self.assertIn("Bedding #2", labels)
 
 
 class OtherZoneTests(FlowTestCase):
@@ -532,8 +635,8 @@ class WrapUpTests(FlowTestCase):
         self.assertIsNotNone(self.audit.end_time)
 
     def test_an_item_with_two_problems_is_listed_once_in_the_issue_summary(self):
-        self.tap("TV", "damaged")
-        self.tap("TV", "not_working", check="function")
-        self.act("TV", "work_order")
+        self.tap("Mattress", "worn")
+        self.tap("Mattress", "fail", check="pest")
+        self.act("Mattress", "work_order")
         page = self.client.get(f"/audits/{self.audit.pk}/wrapup/")
         self.assertContains(page, "Issues from this audit: 1")

@@ -44,40 +44,14 @@ and running the app.
 
 ### On the same wifi
 
-1. On the laptop, start the app with this command instead of `runserver`:
-
-   ```bash
-   python manage.py serve_phone
-   ```
-
-2. The function check applies to the A/C unit, heater, heater pilot, TV,
-   lights, outlets, sink, shower, toilet, smoke detector and mini fridge. It
-   is not applied to mirrors, the towel rack, or the A/C casing and filter,
-   where "does it work" has no clear meaning. N/A is offered on condition
-   checks only.
-3. Leave the terminal window open. Press Ctrl+C to stop.
-
-If the phone cannot load the page:
-
-- macOS may ask whether to allow incoming connections the first time. Choose
-  Allow.
-- Check that both devices are on the same wifi network. Guest networks often
-  stop devices from talking to each other; if the motel's does, use Tailscale
-  below.
-- Keep the laptop awake. On a Mac, run `caffeinate -s` in a second terminal
-  window while auditing.
-
-### From anywhere, with Tailscale
-
-[Tailscale](https://tailscale.com) is a free app that links your own devices
-privately. Use it when the wifi blocks device-to-device traffic or when you
-are away from the motel.
-
-1. Install Tailscale on the laptop and on the phone, and sign in to the same
-   account on both.
-2. Start the app with `python manage.py serve_phone`.
-3. On the phone, open `http://<laptop-name>.<your-tailnet>.ts.net:8000/`. The
-   Tailscale app shows the laptop's full name. This address does not change.
+1. *(Confirmed)* Every inventory item gets one condition check (OK, worn,
+   damaged, missing, not working, intermittent, N/A, Other). It covers both
+   the item's state and whether it works; there is no separate function check.
+2. The function check type and its option list still exist in the data model
+   but no item uses them.
+3. The squeak test (pass, fail, Other) applies once to the whole bed and sits
+   on the bed frame. The bedbug check (pass, fail, Other) applies to each
+   mattress.
 4. To use the laptop's Tailscale number instead of its name, start the app
    with `python manage.py serve_phone --host 100.x.y.z`.
 
@@ -218,8 +192,27 @@ Changed on Nov 12 after the first phone audit:
   outlet row covering all its outlets. Chairs stay as separate items.
 - **Overall rating removed.**
 
-Each guest room now starts with 45 inventory records (52 in room 9). A
-database seeded before this change needs resetting (see above).
+Consolidated on Nov 13 to cut taps (a standard room went from 63 checks to 40):
+
+- **One check per fixture.** "Works?" is gone. The condition check covers it,
+  with Not working and Intermittent in its list.
+- **Combined rows:** the A/C with its casing and filter; the heater with its
+  pilot; all sconces and lamps; the comforter and pillows as "Bedding"; and
+  one Signage row for the whole room.
+- **Pillows to replace.** Bedding has a number field for how many pillows
+  need replacing. It appears in the issue, for example "Bedding (Bedroom):
+  Worn (replace 2 pillows)".
+- **Several photos per item.** Every item can have any number of photos; each
+  can be removed on its own. A new photo is added, it no longer replaces the
+  previous one.
+- **One squeak test for the whole bed**, on the bed frame. The bedbug check
+  stays on the mattress.
+- Walls, ceiling and trim stay separate, as do the bed frame, headboard,
+  mattress and box spring, and the two chairs.
+
+Each guest room now starts with 38 inventory records (44 in room 9, which has
+two beds and a bedding set for each). A database seeded before this change
+needs resetting (see above).
 
 ## Assumptions
 
@@ -338,12 +331,18 @@ Points confirmed with Bryan are marked as such.
     are unchanged.
 37. Items added in the Other step are saved as furnishings with the category
     "other" and the name typed in. They get a condition check only.
-38. An item's note and photo are stored on its first check (condition, or
-    "Present?" for a missing item). The issue's edit page and the CSV show
-    them.
+38. An item's note and photos are stored on its first check (condition, or
+    "Present?" for a missing item). The issue's edit page shows them and the
+    CSV includes the note.
 39. The "Next unanswered" button goes to the next unanswered check below the
     middle of the screen and wraps round to the first. The counts on the step
     buttons at the top refresh when the page is reloaded.
+40. The pillow count is 0 to 12 and is stored on the bedding item's condition
+    finding. It does not open an issue on its own: mark the bedding worn or
+    damaged and pick an action. Marking bedding N/A clears the count.
+41. In room 9 each bed has its own Bedding row (a comforter and 2 pillows).
+42. The file picker accepts several photos at once from the library. There is
+    no limit on photos per item.
 
 ## Not in v1
 

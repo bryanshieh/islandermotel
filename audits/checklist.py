@@ -11,14 +11,12 @@ from dataclasses import dataclass, field
 from typing import Optional
 
 from .models import (
-    AC_UNIT_NAME,
     GOOD_RESULTS,
     NOT_APPLICABLE,
     BuildingElementType,
     RESULT_OPTIONS,
     CheckType,
     Finding,
-    FixtureCategory,
     FurnishingCategory,
     ItemKind,
     ItemStatus,
@@ -34,25 +32,14 @@ SMELL_ITEM_KEY = "room-0"
 CHECK_LABELS = {
     CheckType.CONDITION: "Condition",
     CheckType.FUNCTION: "Works?",
-    CheckType.NOISE: "Squeak test",
+    CheckType.NOISE: "Squeak test (whole bed)",
     CheckType.PEST: "Bedbug check",
     CheckType.PRESENCE: "Present?",
     CheckType.SMELL: "Smell",
 }
 
-# Fixtures that get a "does it work" check on top of the condition check.
-FUNCTION_CATEGORIES = {
-    FixtureCategory.HEATER,
-    FixtureCategory.TV,
-    FixtureCategory.LIGHT,
-    FixtureCategory.OUTLET,
-    FixtureCategory.SINK,
-    FixtureCategory.SHOWER,
-    FixtureCategory.TOILET,
-    FixtureCategory.SMOKE_DETECTOR,
-    FixtureCategory.MINI_FRIDGE,
-}
-SQUEAK_CATEGORIES = {FurnishingCategory.BED_FRAME, FurnishingCategory.MATTRESS}
+# One squeak test covers the whole bed and sits on the bed frame.
+SQUEAK_CATEGORIES = {FurnishingCategory.BED_FRAME}
 BEDBUG_CATEGORIES = {FurnishingCategory.MATTRESS}
 
 TARGET_FIELDS = {
@@ -63,13 +50,14 @@ TARGET_FIELDS = {
 
 
 def checks_for(item):
-    """Check types for one inventory record."""
+    """Check types for one inventory record.
+
+    Everything gets one condition check, which also covers whether it works
+    (Not working, Intermittent). The bed frame adds the squeak test and the
+    mattress the bedbug check.
+    """
     checks = [CheckType.CONDITION]
-    if item.kind == ItemKind.FIXTURE:
-        is_ac_unit = item.category == FixtureCategory.HVAC and item.name == AC_UNIT_NAME
-        if item.category in FUNCTION_CATEGORIES or is_ac_unit:
-            checks.append(CheckType.FUNCTION)
-    elif item.kind == ItemKind.FURNISHING:
+    if item.kind == ItemKind.FURNISHING:
         if item.category in SQUEAK_CATEGORIES:
             checks.append(CheckType.NOISE)
         if item.category in BEDBUG_CATEGORIES:
@@ -140,7 +128,7 @@ class ItemEntry:
     """One item on the audit screen with its checks.
 
     The action, note and photo belong to the item as a whole, not to each
-    check. The note and photo are stored on the item's first check.
+    check. The note and photos are stored on the item's first check.
     """
 
     key: str
@@ -190,8 +178,22 @@ class ItemEntry:
         return self.anchor.finding.notes if self.anchor.finding else ""
 
     @property
-    def photo(self):
-        return self.anchor.finding.photo if self.anchor.finding else None
+    def photos(self):
+        finding = self.anchor.finding
+        return list(finding.photos.all()) if finding and finding.pk else []
+
+    @property
+    def counts_pillows(self):
+        """Bedding has a "pillows to replace" number."""
+        return (
+            self.item is not None
+            and self.item.kind == ItemKind.FURNISHING
+            and self.item.category == FurnishingCategory.BEDDING
+        )
+
+    @property
+    def pillows(self):
+        return self.anchor.finding.pillows_to_replace if self.anchor.finding else 0
 
     def row(self, key):
         return next((row for row in self.checks if row.key == key), None)

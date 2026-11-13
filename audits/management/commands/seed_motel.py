@@ -25,6 +25,8 @@ BED, BATH = Zone.BEDROOM, Zone.BATHROOM
 # the first test run: there is no entry zone (the entry door is a bedroom item
 # that covers its hinges, locks and threshold), the bedroom has a mini fridge,
 # the bathroom has an outlet, and the shower has two handles (hot and cold).
+# Things fixed or replaced together are one row: the A/C with its casing and
+# filter, the heater with its pilot, all lamps, and the bedding.
 # Decor is not seeded; it is counted on the first audit.
 STANDARD_ITEMS = [
     (BED, "Entry door", B, "door", 1, "Deadbolt, plus doorknob with lock; includes hinges and threshold"),
@@ -36,16 +38,12 @@ STANDARD_ITEMS = [
     (BED, "Chair", F, "chair", 2, ""),
     (BED, "TV", X, "tv", 1, ""),
     (BED, "Overhead light", X, "light", 1, ""),
-    (BED, "Sconce or lamp", X, "light", 2, ""),
+    (BED, "Sconces and lamps", X, "light", 1, "All sconces and lamps; add a photo of each problem"),
     (BED, "Mirror", X, "mirror", 1, ""),
-    (BED, AC_UNIT_NAME, X, "hvac", 1, ""),
-    (BED, "A/C casing", X, "hvac", 1, ""),
-    (BED, "A/C filter", X, "hvac", 1, ""),
-    (BED, "Heater", X, "heater", 1, ""),
-    (BED, "Heater pilot", X, "heater", 1, ""),
+    (BED, AC_UNIT_NAME, X, "hvac", 1, "Unit, casing and filter"),
+    (BED, "Heater", X, "heater", 1, "Heater and pilot"),
     (BED, "Dresser", F, "dresser", 1, ""),
-    (BED, "Comforter", F, "comforter", 1, ""),
-    (BED, "Pillow", F, "pillow", 2, ""),
+    (BED, "Bedding", F, "bedding", 1, "Comforter and 2 pillows"),
     (BED, "Outlet", X, "outlet", 1, "All outlets in the bedroom"),
     (BED, "Smoke detector", X, "smoke_detector", 1, ""),
     (BED, "Mini fridge", X, "mini_fridge", 1, ""),
@@ -65,11 +63,14 @@ PER_ZONE_ITEMS = [
     ("Flooring", "floor", "Carpet, tile or tileboard"),
     ("Windows", "window", ""),
     ("Trim", "trim", ""),
-    ("Signage", "signage", "For example no smoking, do not flush tampons"),
 ]
 for _zone in (BED, BATH):
     for _name, _element, _notes in PER_ZONE_ITEMS:
         STANDARD_ITEMS.append((_zone, _name, B, _element, 1, _notes))
+# One signage row covers the whole room.
+STANDARD_ITEMS.append(
+    (BED, "Signage", B, "signage", 1, "Whole room, for example no smoking, do not flush tampons")
+)
 # Ceilings are in the PRD audit flow for the bedroom and bathroom.
 for _zone in (BED, BATH):
     STANDARD_ITEMS.append((_zone, "Ceiling", B, "ceiling", 1, ""))
@@ -91,7 +92,7 @@ ROOM_OVERRIDES = {
         "Mattress": 2,
         "Box spring": 2,
         "Dresser": 2,
-        "Pillow": 4,
+        "Bedding": 2,  # one set per bed: 2 comforters, 4 pillows
     }
 }
 BED_CONFIGURATION = {"9": "2 queen"}
