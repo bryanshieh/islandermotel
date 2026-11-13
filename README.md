@@ -337,7 +337,7 @@ Points confirmed with Bryan are marked as such.
 39. The "Next unanswered" button goes to the next unanswered check below the
     middle of the screen and wraps round to the first. The counts on the step
     buttons at the top refresh when the page is reloaded.
-40. The pillow count is 0 to 12 and is stored on the bedding item's condition
+40. The pillow count is 0 to 4 and is stored on the bedding item's condition
     finding. It does not open an issue on its own: mark the bedding worn or
     damaged and pick an action. Marking bedding N/A clears the count.
 41. In room 9 each bed has its own Bedding row (a comforter and 2 pillows).

@@ -48,7 +48,7 @@ STEPS = [
     ("wrapup", "Wrap-up"),
 ]
 STEP_SLUGS = [slug for slug, _ in STEPS]
-MAX_PILLOWS = 12
+MAX_PILLOWS = 4
 PHOTO_ERROR = "That file is not a photo the app can read. Try a JPEG or PNG."
 
 

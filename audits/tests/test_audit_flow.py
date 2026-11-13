@@ -523,9 +523,12 @@ class BeddingTests(FlowTestCase):
 
     def test_pillow_count_is_validated_and_only_for_bedding(self):
         self.tap("Bedding", "worn")
-        for bad in ("13", "-1", "lots"):
+        for bad in ("5", "-1", "lots"):
             self.assertEqual(self.post_item("Bedding", pillows=bad).status_code, 400, bad)
         self.assertEqual(self.entry("Bedding").pillows, 0)
+        self.assertEqual(self.post_item("Bedding", pillows="4").status_code, 200)  # the maximum
+        self.assertEqual(self.entry("Bedding").pillows, 4)
+        self.post_item("Bedding", pillows="0")
         self.tap("TV", "worn")
         self.post_item("TV", pillows="3")
         self.assertEqual(self.entry("TV").pillows, 0)

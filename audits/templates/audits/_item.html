@@ -64,11 +64,11 @@
 
     {% if entry.counts_pillows and not entry.not_applicable %}
       <label style="margin-top:.5rem">Pillows to replace
-        <input type="number" name="pillows" min="0" max="12" step="1" inputmode="numeric"
+        <input type="number" name="pillows" min="0" max="4" step="1" inputmode="numeric"
                value="{{ entry.pillows }}" style="max-width:8rem;margin-bottom:.25rem"
                hx-post="{{ update_url }}" hx-trigger="change, keyup changed delay:800ms" hx-swap="none"
                hx-vals='{"item": "{{ entry.key }}"}'
-               hx-on::after-request="this.nextElementSibling.textContent = event.detail.successful ? 'Saved' : 'Not saved: enter a number from 0 to 12'">
+               hx-on::after-request="this.nextElementSibling.textContent = event.detail.successful ? 'Saved' : 'Not saved: enter a number from 0 to 4'">
         <span class="saved-note"></span>
       </label>
     {% endif %}
