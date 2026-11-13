@@ -74,41 +74,118 @@ class PhotoUploadTests(TestCase):
     def setUp(self):
         self.client.force_login(self.user)
         self.audit = Audit.objects.create(room=self.room, cycle_year=2026)
-        self.url = reverse("finding_update", args=[self.audit.pk])
+        self.url = reverse("item_update", args=[self.audit.pk])
         entries = checklist.build_zone(self.audit, "bathroom")
-        self.key = next(e for e in entries if e.label == "Toilet").checks[0].key
-        self.client.post(self.url, {"key": self.key, "result": "damaged"})
+        entry = next(e for e in entries if e.label == "Toilet")
+        self.item = entry.key
+        self.client.post(
+            self.url, {"item": self.item, "key": entry.checks[0].key, "result": "damaged"}
+        )
+
+    def photos(self):
+        return list(Finding.objects.get().photos.all())
 
     def test_uploaded_photo_is_stored_shrunk(self):
-        self.client.post(self.url, {"key": self.key, "photo": image_file((4000, 3000))})
-        finding = Finding.objects.get()
-        with finding.photo.open() as stored:
+        self.client.post(self.url, {"item": self.item, "photo": image_file((4000, 3000))})
+        with self.photos()[0].photo.open() as stored:
             self.assertEqual(Image.open(stored).size, (MAX_SIDE, 1200))
 
-    def test_replacing_a_photo_removes_the_old_file(self):
-        self.client.post(self.url, {"key": self.key, "photo": image_file((100, 100), name="a.jpg")})
-        first = Finding.objects.get().photo
-        first_name, storage = first.name, first.storage
-        self.client.post(self.url, {"key": self.key, "photo": image_file((100, 100), name="b.jpg")})
-        self.assertFalse(storage.exists(first_name))
-        self.assertTrue(storage.exists(Finding.objects.get().photo.name))
+    def test_a_second_photo_is_added_not_replaced(self):
+        self.client.post(self.url, {"item": self.item, "photo": image_file((100, 100), name="a.jpg")})
+        self.client.post(self.url, {"item": self.item, "photo": image_file((100, 100), name="b.jpg")})
+        photos = self.photos()
+        self.assertEqual(len(photos), 2)
+        for photo in photos:
+            self.assertTrue(photo.photo.storage.exists(photo.photo.name))
 
     def test_bad_file_shows_an_error_and_keeps_the_finding(self):
         bad = SimpleUploadedFile("notes.jpg", b"not a picture")
-        response = self.client.post(self.url, {"key": self.key, "photo": bad})
+        response = self.client.post(self.url, {"item": self.item, "photo": bad})
         self.assertContains(response, "not a photo the app can read")
-        finding = Finding.objects.get()
-        self.assertFalse(finding.photo)
-        self.assertEqual(finding.result, "damaged")
+        self.assertEqual(self.photos(), [])
+        self.assertEqual(Finding.objects.get().result, "damaged")
 
     def test_photos_need_a_login(self):
-        self.client.post(self.url, {"key": self.key, "photo": image_file((100, 100))})
-        photo_url = Finding.objects.get().photo.url
+        self.client.post(self.url, {"item": self.item, "photo": image_file((100, 100))})
+        photo_url = self.photos()[0].photo.url
         self.assertEqual(self.client.get(photo_url).status_code, 200)
         self.client.logout()
         response = self.client.get(photo_url)
         self.assertEqual(response.status_code, 302)
         self.assertIn("/login/", response["Location"])
+
+    def test_deleting_the_finding_removes_its_photo_files(self):
+        self.client.post(self.url, {"item": self.item, "photo": image_file((100, 100))})
+        photo = self.photos()[0].photo
+        storage, name = photo.storage, photo.name
+        Finding.objects.all().delete()
+        self.assertFalse(storage.exists(name))
+
+
+@override_settings(MEDIA_ROOT=MEDIA)
+class ZonePhotoTests(TestCase):
+    @classmethod
+    def setUpTestData(cls):
+        call_command("seed_motel", verbosity=0)
+        cls.user = User.objects.create_superuser("bryan", "", "pw")
+        cls.room = Room.objects.get(number="101")
+
+    def setUp(self):
+        self.client.force_login(self.user)
+        self.audit = Audit.objects.create(room=self.room, cycle_year=2026)
+
+    def url(self, zone):
+        return f"/audits/{self.audit.pk}/zone-photo/{zone}/"
+
+    def test_each_zone_offers_one_optional_general_photo(self):
+        for zone in ("bedroom", "bathroom"):
+            page = self.client.get(f"/audits/{self.audit.pk}/{zone}/")
+            self.assertContains(page, f"General photo of the {zone}", count=2)  # heading + label
+            self.assertContains(page, "(optional)")
+            self.assertNotContains(page, "Remove photo")
+        for step in ("start", "wrapup"):
+            self.assertNotContains(self.client.get(f"/audits/{self.audit.pk}/{step}/"), "General photo")
+
+    def test_photo_is_saved_shrunk_on_the_right_zone(self):
+        response = self.client.post(self.url("bathroom"), {"photo": image_file((4000, 3000))})
+        self.assertContains(response, "Remove photo")
+        self.audit.refresh_from_db()
+        self.assertFalse(self.audit.bedroom_photo)
+        self.assertTrue(self.audit.bathroom_photo.name.startswith("zones/"))
+        with self.audit.bathroom_photo.open() as stored:
+            self.assertEqual(Image.open(stored).size, (MAX_SIDE, 1200))
+        self.assertContains(self.client.get(f"/audits/{self.audit.pk}/bathroom/"), "Remove photo")
+        self.assertNotContains(self.client.get(f"/audits/{self.audit.pk}/bedroom/"), "Remove photo")
+
+    def test_photo_can_be_replaced_and_removed(self):
+        self.client.post(self.url("bedroom"), {"photo": image_file((100, 100), name="a.jpg")})
+        self.audit.refresh_from_db()
+        first, storage = self.audit.bedroom_photo.name, self.audit.bedroom_photo.storage
+        self.client.post(self.url("bedroom"), {"photo": image_file((100, 100), name="b.jpg")})
+        self.audit.refresh_from_db()
+        second = self.audit.bedroom_photo.name
+        self.assertFalse(storage.exists(first))
+        self.assertTrue(storage.exists(second))
+        response = self.client.post(self.url("bedroom"), {"remove_photo": "1"})
+        self.assertNotContains(response, "Remove photo")
+        self.audit.refresh_from_db()
+        self.assertFalse(self.audit.bedroom_photo)
+        self.assertFalse(storage.exists(second))
+
+    def test_zone_photo_does_not_count_as_unanswered_or_open_an_issue(self):
+        before = checklist.zone_counts(self.audit)
+        self.client.post(self.url("bedroom"), {"photo": image_file((100, 100))})
+        self.assertEqual(checklist.zone_counts(self.audit), before)
+        self.assertEqual(Finding.objects.count(), 0)
+
+    def test_bad_file_and_unknown_zone(self):
+        bad = SimpleUploadedFile("notes.jpg", b"not a picture")
+        response = self.client.post(self.url("bedroom"), {"photo": bad})
+        self.assertContains(response, "not a photo the app can read")
+        self.audit.refresh_from_db()
+        self.assertFalse(self.audit.bedroom_photo)
+        self.assertEqual(self.client.post(self.url("start"), {"remove_photo": "1"}).status_code, 404)
+        self.assertEqual(self.client.post(self.url("exterior"), {"remove_photo": "1"}).status_code, 404)
 
 
 class ServePhoneTests(SimpleTestCase):

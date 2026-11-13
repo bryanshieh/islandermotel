@@ -1,0 +1,16 @@
+<div id="zone-items">
+  {% for entry in entries %}
+    {% include "audits/_item.html" %}
+  {% empty %}
+    <p>{% if other_form %}Nothing added yet.{% else %}No items in this zone.{% endif %}</p>
+  {% endfor %}
+
+  {% if other_form %}
+    <form hx-post="{% url 'add_other_item' audit.pk %}" hx-target="#zone-items" hx-swap="outerHTML" style="margin-top:1rem">
+      <fieldset role="group">
+        {{ other_form.name }}
+        <button type="submit" style="white-space:nowrap">Add item</button>
+      </fieldset>
+    </form>
+  {% endif %}
+</div>

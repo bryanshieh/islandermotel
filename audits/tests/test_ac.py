@@ -5,60 +5,35 @@ from django.core.management import call_command
 from django.test import TestCase
 from django.utils import timezone
 
-from audits.ac import ACResult, ac_result, set_reading
-from audits.models import AC_END_LABEL, AC_START_LABEL, Audit, CheckType, Issue, Room
+from audits.ac import ACResult, ac_result, set_outflow
+from audits.models import AC_OUTFLOW_LABEL, Audit, CheckType, Issue, Room
 
 T0 = timezone.make_aware(datetime(2026, 11, 10, 14, 0))
 
 
-def result(start, end, minutes):
-    return ACResult(
-        start_value=Decimal(start),
-        start_at=T0,
-        end_value=Decimal(end),
-        end_at=T0 + timedelta(minutes=minutes),
-    )
-
-
 class ACCalculationTests(TestCase):
-    def test_elapsed_and_drop_are_calculated(self):
-        r = result("78.5", "55.0", 8)
-        self.assertEqual(r.elapsed_minutes, 8.0)
-        self.assertEqual(r.drop, Decimal("23.5"))
-        self.assertTrue(r.passed)
-        self.assertEqual(r.status, "pass")
+    def test_difference_is_outside_minus_outflow(self):
+        r = ACResult(outside=Decimal("88.0"), outflow=Decimal("56.5"))
+        self.assertEqual(r.difference, Decimal("31.5"))
 
-    def test_exactly_20_degrees_in_exactly_10_minutes_passes(self):
-        self.assertTrue(result("75", "55", 10).passed)
+    def test_difference_is_negative_when_outflow_is_warmer(self):
+        self.assertEqual(ACResult(Decimal("60"), Decimal("65")).difference, Decimal("-5"))
 
-    def test_drop_under_20_fails(self):
-        r = result("75", "55.1", 5)
-        self.assertEqual(r.drop, Decimal("19.9"))
-        self.assertFalse(r.passed)
-        self.assertEqual(r.status, "fail")
+    def test_minutes_running_is_from_ac_on_to_the_outflow_reading(self):
+        r = ACResult(on_at=T0, outflow_at=T0 + timedelta(minutes=18, seconds=30))
+        self.assertEqual(r.minutes_running, 18.5)
 
-    def test_over_10_minutes_fails_even_with_a_big_drop(self):
-        self.assertFalse(result("80", "50", 11).passed)
+    def test_missing_pieces_give_no_number(self):
+        self.assertIsNone(ACResult(outside=Decimal("88")).difference)
+        self.assertIsNone(ACResult(outflow=Decimal("56")).difference)
+        self.assertIsNone(ACResult(on_at=T0).minutes_running)
+        self.assertIsNone(ACResult(outflow_at=T0).minutes_running)
+        self.assertFalse(ACResult().recorded)
 
-    def test_one_second_over_10_minutes_fails(self):
-        r = ACResult(Decimal("80"), T0, Decimal("50"), T0 + timedelta(minutes=10, seconds=1))
-        self.assertFalse(r.passed)
-
-    def test_temperature_rise_fails(self):
-        r = result("60", "70", 5)
-        self.assertEqual(r.drop, Decimal("-10"))
-        self.assertFalse(r.passed)
-
-    def test_end_before_start_fails(self):
-        self.assertFalse(result("80", "50", -3).passed)
-
-    def test_incomplete_test_is_neither_pass_nor_fail(self):
-        r = ACResult(start_value=Decimal("78"), start_at=T0)
-        self.assertFalse(r.complete)
-        self.assertIsNone(r.passed)
-        self.assertIsNone(r.drop)
-        self.assertIsNone(r.elapsed_minutes)
-        self.assertEqual(r.status, "incomplete")
+    def test_there_is_no_pass_or_fail(self):
+        r = ACResult(Decimal("88"), Decimal("56"), T0, T0 + timedelta(minutes=5))
+        self.assertFalse(hasattr(r, "passed"))
+        self.assertFalse(hasattr(r, "status"))
 
 
 class ACReadingTests(TestCase):
@@ -67,34 +42,30 @@ class ACReadingTests(TestCase):
         call_command("seed_motel", verbosity=0)
         cls.room = Room.objects.get(number="101")
 
-    def test_two_measurement_findings_on_the_ac_fixture(self):
-        audit = Audit.objects.create(room=self.room, cycle_year=2026)
-        set_reading(audit, AC_START_LABEL, Decimal("78.0"), T0)
-        set_reading(audit, AC_END_LABEL, Decimal("56.0"), T0 + timedelta(minutes=9))
+    def test_result_combines_the_audit_and_the_outflow_finding(self):
+        audit = Audit.objects.create(
+            room=self.room, cycle_year=2026, ambient_temperature_f=Decimal("88.0"), ac_on_at=T0
+        )
+        set_outflow(audit, Decimal("56.0"), T0 + timedelta(minutes=20))
 
-        readings = audit.findings.filter(check_type=CheckType.MEASUREMENT)
-        self.assertEqual(readings.count(), 2)
-        for finding in readings:
-            self.assertEqual(finding.fixture, self.room.ac_unit())
-            self.assertEqual(finding.unit, "°F")
-            self.assertIsNotNone(finding.measured_at)
+        finding = audit.findings.get()
+        self.assertEqual(finding.check_type, CheckType.MEASUREMENT)
+        self.assertEqual(finding.measurement_label, AC_OUTFLOW_LABEL)
+        self.assertEqual(finding.fixture, self.room.ac_unit())
+        self.assertEqual(finding.unit, "°F")
 
         r = ac_result(audit)
-        self.assertEqual(r.drop, Decimal("22.0"))
-        self.assertEqual(r.elapsed_minutes, 9.0)
-        self.assertTrue(r.passed)
+        self.assertEqual((r.outside, r.outflow), (Decimal("88.0"), Decimal("56.0")))
+        self.assertEqual(r.difference, Decimal("32.0"))
+        self.assertEqual(r.minutes_running, 20.0)
         self.assertEqual(Issue.objects.count(), 0)  # readings never open issues
 
-    def test_saving_a_reading_again_updates_it(self):
+    def test_saving_the_reading_again_updates_it_and_blank_removes_it(self):
         audit = Audit.objects.create(room=self.room, cycle_year=2026)
-        set_reading(audit, AC_START_LABEL, Decimal("78.0"), T0)
-        set_reading(audit, AC_START_LABEL, Decimal("80.0"), T0)
+        set_outflow(audit, Decimal("56.0"), T0)
+        set_outflow(audit, Decimal("58.0"), T0)
         self.assertEqual(audit.findings.count(), 1)
-        self.assertEqual(ac_result(audit).start_value, Decimal("80.0"))
-        self.assertIsNone(ac_result(audit).passed)
-
-    def test_clearing_a_reading_removes_it(self):
-        audit = Audit.objects.create(room=self.room, cycle_year=2026)
-        set_reading(audit, AC_START_LABEL, Decimal("78.0"), T0)
-        set_reading(audit, AC_START_LABEL, None, None)
+        self.assertEqual(ac_result(audit).outflow, Decimal("58.0"))
+        self.assertIsNone(ac_result(audit).difference)  # no outside temperature yet
+        set_outflow(audit, None, None)
         self.assertEqual(audit.findings.count(), 0)

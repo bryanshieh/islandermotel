@@ -44,38 +44,14 @@ and running the app.
 
 ### On the same wifi
 
-1. On the laptop, start the app with this command instead of `runserver`:
-
-   ```bash
-   python manage.py serve_phone
-   ```
-
-2. It prints an address such as `http://192.168.1.23:8000/`. Type that into
-   the phone's browser and log in. The address can change from day to day, so
-   read it off the laptop each session.
-3. Leave the terminal window open. Press Ctrl+C to stop.
-
-If the phone cannot load the page:
-
-- macOS may ask whether to allow incoming connections the first time. Choose
-  Allow.
-- Check that both devices are on the same wifi network. Guest networks often
-  stop devices from talking to each other; if the motel's does, use Tailscale
-  below.
-- Keep the laptop awake. On a Mac, run `caffeinate -s` in a second terminal
-  window while auditing.
-
-### From anywhere, with Tailscale
-
-[Tailscale](https://tailscale.com) is a free app that links your own devices
-privately. Use it when the wifi blocks device-to-device traffic or when you
-are away from the motel.
-
-1. Install Tailscale on the laptop and on the phone, and sign in to the same
-   account on both.
-2. Start the app with `python manage.py serve_phone`.
-3. On the phone, open `http://<laptop-name>.<your-tailnet>.ts.net:8000/`. The
-   Tailscale app shows the laptop's full name. This address does not change.
+1. *(Confirmed)* Every inventory item gets one condition check (OK, worn,
+   damaged, missing, not working, intermittent, N/A, Other). It covers both
+   the item's state and whether it works; there is no separate function check.
+2. The function check type and its option list still exist in the data model
+   but no item uses them.
+3. The squeak test (pass, fail, Other) applies once to the whole bed and sits
+   on the bed frame. The bedbug check (pass, fail, Other) applies to each
+   mattress.
 4. To use the laptop's Tailscale number instead of its name, start the app
    with `python manage.py serve_phone --host 100.x.y.z`.
 
@@ -107,13 +83,13 @@ python manage.py test
 ## Using it
 
 - **Audits** (home page): pick a room, audit type and cycle year, then walk
-  through Start, Bedroom, Bathroom and Wrap-up. Every tap on a result
+  through Start, Bedroom, Bathroom, Other and Wrap-up. Every tap on a result
   button is saved straight away, so you can leave at any point and resume from
   the saved audits list. Unanswered items stay marked "Unanswered".
 - **Issues**: one row per issue, with filters and "Export this view to CSV".
   Change status in the list, or use Edit for priority, cost estimate, date
   resolved and resolution notes.
-- **Dashboard**: issue counts by bucket and room type, and A/C results per
+- **Dashboard**: issue counts by bucket and room type, and A/C readings per
   room, for the cycle year you select (defaults to the latest).
 - **Admin** (`/admin/`): rooms, room types, room standards and inventory
   corrections.
@@ -172,11 +148,9 @@ match and lists them under "Revisions".
 - **Inventory:** the bedroom has a mini fridge; the bathroom has an outlet as
   well as its mirror; the shower has a shower head and two handles (hot and
   cold) instead of two nozzles.
-- **Decor pieces can be deleted** from the bedroom step, which also removes
-  that audit's answers (and any issue) for the piece. Other items are still
-  added, corrected or retired in Admin.
+- **Decor** was first added in the bedroom step; it has since moved to the
+  Other step (see the Nov 12 changes below).
 
-Each guest room now starts with 48 inventory records (55 in room 9).
 
 Added on Nov 11 after Bryan chose self-hosting over a paid or free host:
 
@@ -185,6 +159,60 @@ Added on Nov 11 after Bryan chose self-hosting over a paid or free host:
 - **Self-hosted phone access** through `serve_phone` (same wifi or Tailscale),
   in place of the PRD's hosted deployment, which stays deferred.
 - **Photos are shrunk on upload**, and a new photo replaces the old file.
+- **One optional general photo per zone** (bedroom and bathroom), added at the
+  top of each zone's screen. It is saved on the audit, in `media/zones/`, and
+  does not count as an unanswered item or open an issue.
+- **Noise measurements.** Peak dB outside the room is entered on the Start
+  step, and peak dB inside, measured from the bed, at the top of the Bedroom
+  step. Both are optional measurement findings in dB. Wrap-up shows the two
+  readings and the difference. There is no pass or fail target.
+
+Changed on Nov 12 after the first phone audit:
+
+- **One action per item.** An item's checks (condition, works, squeak,
+  bedbug) share a single action, note and photo, and at most one issue. An
+  item with two problems makes one issue, such as "TV (Bedroom): Damaged, Not
+  working".
+- **N/A clears the rest.** Marking an item's condition N/A hides and clears
+  its other checks and its action, and they stop counting as unanswered. The
+  note and photo stay.
+- **A/C check.** Start records the outside temperature and when the A/C was
+  switched on ("A/C on now" saves the time straight away). Wrap-up records
+  the outflow air temperature. The app shows outside, outflow, the difference
+  and minutes running. There is no pass or fail.
+- **Room size.** Length and width are entered on the first audit and the
+  square footage is calculated.
+- **Other zone.** A new step between Bathroom and Wrap-up for decor and
+  anything else not on the standard list. Items are added and deleted there
+  without the page reloading. The bedroom's "Add decor" form is gone.
+- **Jump to unanswered.** Each zone has a "Go to first unanswered" button at
+  the top and a floating "Next unanswered" button showing how many are left.
+- **Flooring types** now include LVP.
+- **Inventory:** shower handles are part of the shower, and each zone has one
+  outlet row covering all its outlets. Chairs stay as separate items.
+- **Overall rating removed.**
+
+Consolidated on Nov 13 to cut taps (a standard room went from 63 checks to 40):
+
+- **One check per fixture.** "Works?" is gone. The condition check covers it,
+  with Not working and Intermittent in its list.
+- **Combined rows:** the A/C with its casing and filter; the heater with its
+  pilot; all sconces and lamps; the comforter and pillows as "Bedding"; and
+  one Signage row for the whole room.
+- **Pillows to replace.** Bedding has a number field for how many pillows
+  need replacing. It appears in the issue, for example "Bedding (Bedroom):
+  Worn (replace 2 pillows)".
+- **Several photos per item.** Every item can have any number of photos; each
+  can be removed on its own. A new photo is added, it no longer replaces the
+  previous one.
+- **One squeak test for the whole bed**, on the bed frame. The bedbug check
+  stays on the mattress.
+- Walls, ceiling and trim stay separate, as do the bed frame, headboard,
+  mattress and box spring, and the two chairs.
+
+Each guest room now starts with 38 inventory records (44 in room 9, which has
+two beds and a bedding set for each). A database seeded before this change
+needs resetting (see above).
 
 ## Assumptions
 
@@ -206,8 +234,7 @@ Points confirmed with Bryan are marked as such.
 4. Option lists for the cleanliness and secure check types are defined, but no
    item uses them in v1.
 5. The condition score (1-4) on a finding exists in the data model and admin
-   but is not asked for in the audit screens, to keep taps down. The overall
-   room rating (1-4) is asked at wrap-up.
+   but is not asked for in the audit screens, to keep taps down.
 6. "Other" counts as a possible problem, so it shows the action buttons.
 7. An answered result can be cleared, which returns the item to unanswered.
 
@@ -225,9 +252,9 @@ Points confirmed with Bryan are marked as such.
     that "one per zone" items and same-category items (A/C, A/C casing and
     A/C filter are all HVAC) can be generated and matched. Furnishing and
     Fixture also have a zone, a name and a notes field for the same reason.
-12. The A/C unit that the two readings attach to is the HVAC fixture named
-    exactly "A/C". If it is renamed in admin, readings are still saved but are
-    not linked to a fixture.
+12. The A/C outflow reading attaches to the HVAC fixture named exactly "A/C".
+    If it is renamed in admin, the reading is still saved but is not linked
+    to a fixture.
 13. Storage has no room type (the PRD has four types) and is flagged with an
     "is storage" checkbox. It gets no inventory and cannot be picked for an
     audit.
@@ -255,27 +282,29 @@ Points confirmed with Bryan are marked as such.
 21. The cycle is stored as a year plus an audit type and shown as, for
     example, "2026 annual". The dashboard and issue filters use the year, so
     spot checks count toward their year.
-22. Square footage is asked on the Start step while the room has none, and
-    throughout the room's first audit. Decor pieces can be added on the
-    Bedroom step of any audit (the PRD's open question about removing both
-    steps after the first audit is left open).
-23. Each A/C reading's time defaults to the moment it is saved and can be
-    edited. A reading is recorded in °F to one decimal place.
-24. A failed A/C test is flagged on the wrap-up screen and dashboard. It does
-    not open an Issue on its own; use the A/C unit's checks for that.
-25. "Within 10 minutes" means up to and including 10:00 between the two
-    readings, and a drop of exactly 20.0°F passes.
-
+22. Room length and width are asked on the Start step while the room has no
+    square footage, and throughout the room's first audit. Square footage is
+    length times width, rounded to the nearest whole number.
+23. "A/C on now" uses the laptop's clock. The outflow reading's time defaults
+    to the moment it is saved and can be edited. Temperatures are recorded in
+    °F to one decimal place.
+24. The A/C difference is the outside temperature minus the outflow air
+    temperature. The app does not judge it and it never opens an Issue; use
+    the A/C unit's own checks for that.
+25. The outside temperature is the audit's ambient temperature field; there
+    is no separate indoor temperature reading.
 **Issues and outputs**
 
-26. An Issue is opened only when a problem result has the action fix now, work
-    order or capex. A problem with no action picked, or with None, opens no
-    Issue (the screen prompts "Pick an action").
+26. An Issue is opened only when an item has a problem result and its action
+    is fix now, work order or capex. A problem with no action picked, or with
+    None, opens no Issue (the screen prompts "Pick an action").
 27. "Closed" means status done, with today's date and an automatic resolution
     note. If the finding becomes a problem again, an issue the app closed is
     reopened; an issue you marked done yourself is left alone.
-28. The issue's title and bucket always follow its finding. The title (for
-    example "Chair #2 (Bedroom): Damaged") is what the list shows as the item.
+28. An item has at most one Issue per audit. Its title lists every problem
+    on the item in check order (for example "TV (Bedroom): Damaged, Not
+    working"), and its bucket is the item's action. The title is what the
+    issue list shows as the item.
 29. New issues start at priority medium. Setting status to done fills in the
     resolved date if it is empty.
 30. The issue list has a cycle filter in addition to the four in the PRD, so
@@ -285,9 +314,9 @@ Points confirmed with Bryan are marked as such.
     audits. The A/C table lists rooms that have an audit in the cycle, using
     each room's most recent audit; rooms not yet audited are not listed.
 32. Deleting an inventory record in admin keeps its past findings (shown as
-    "removed item"); retiring it is the better option. Deleting a decor piece
-    from the audit screen removes that audit's findings for it and keeps any
-    from earlier audits the same way.
+    "removed item"); retiring it is the better option. Deleting an item from
+    the Other step removes that audit's findings for it and keeps any from
+    earlier audits the same way.
 33. The smell check counts toward the Start step's unanswered total. Flooring
     type does not count as an unanswered item.
 34. `serve_phone` runs the app with the Waitress server and DEBUG off, and
@@ -300,6 +329,20 @@ Points confirmed with Bryan are marked as such.
     browser, and a file the app cannot read shows an error instead of saving.
 36. The phone layout applies below 600 pixels wide. Tablet and laptop layouts
     are unchanged.
+37. Items added in the Other step are saved as furnishings with the category
+    "other" and the name typed in. They get a condition check only.
+38. An item's note and photos are stored on its first check (condition, or
+    "Present?" for a missing item). The issue's edit page shows them and the
+    CSV includes the note.
+39. The "Next unanswered" button goes to the next unanswered check below the
+    middle of the screen and wraps round to the first. The counts on the step
+    buttons at the top refresh when the page is reloaded.
+40. The pillow count is 0 to 4 and is stored on the bedding item's condition
+    finding. It does not open an issue on its own: mark the bedding worn or
+    damaged and pick an action. Marking bedding N/A clears the count.
+41. In room 9 each bed has its own Bedding row (a comforter and 2 pillows).
+42. The file picker accepts several photos at once from the library. There is
+    no limit on photos per item.
 
 ## Not in v1
 

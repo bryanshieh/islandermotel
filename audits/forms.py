@@ -18,6 +18,18 @@ def temperature_field(label):
     )
 
 
+def decibel_field(label):
+    return forms.DecimalField(
+        label=label,
+        required=False,
+        max_digits=5,
+        decimal_places=1,
+        min_value=0,
+        max_value=200,
+        widget=forms.NumberInput(attrs={"step": "0.1", "inputmode": "decimal"}),
+    )
+
+
 def reading_time_field(label):
     return forms.DateTimeField(
         label=label,
@@ -44,34 +56,50 @@ class NewAuditForm(forms.Form):
         self.fields["cycle_year"].initial = timezone.localdate().year
 
 
-class StartForm(forms.Form):
-    ambient_temperature_f = temperature_field("Ambient temperature (°F)")
-    square_footage = forms.IntegerField(
-        label="Room square footage", required=False, min_value=1, max_value=5000
+def feet_field(label):
+    return forms.DecimalField(
+        label=label,
+        required=False,
+        max_digits=5,
+        decimal_places=1,
+        min_value=1,
+        max_value=200,
+        widget=forms.NumberInput(attrs={"step": "0.1", "inputmode": "decimal"}),
     )
-    ac_start_value = temperature_field("A/C supply air, first reading (°F)")
-    ac_start_time = reading_time_field("Time of first reading")
+
+
+class StartForm(forms.Form):
+    ambient_temperature_f = temperature_field("Outside temperature (°F)")
+    room_length_ft = feet_field("Room length (ft)")
+    room_width_ft = feet_field("Room width (ft)")
+    noise_outside_db = decibel_field("Peak noise outside (dB)")
+    ac_on_time = reading_time_field("A/C switched on at")
+
+    def clean(self):
+        data = super().clean()
+        if bool(data.get("room_length_ft")) != bool(data.get("room_width_ft")):
+            raise forms.ValidationError("Enter both the length and the width, or neither.")
+        return data
+
+
+class NoiseForm(forms.Form):
+    value = decibel_field("Peak noise inside, from the bed (dB)")
 
 
 class WrapUpForm(forms.Form):
-    ac_end_value = temperature_field("A/C supply air, second reading (°F)")
-    ac_end_time = reading_time_field("Time of second reading")
-    overall_rating = forms.TypedChoiceField(
-        label="Overall rating",
-        required=False,
-        coerce=int,
-        empty_value=None,
-        choices=[(1, "1"), (2, "2"), (3, "3"), (4, "4")],
-        widget=forms.RadioSelect,
-    )
+    ac_outflow_value = temperature_field("A/C outflow air temperature (°F)")
+    ac_outflow_time = reading_time_field("Time of outflow reading")
     overall_notes = forms.CharField(
         label="Overall notes", required=False, widget=forms.Textarea(attrs={"rows": 4})
     )
 
 
-class DecorForm(forms.Form):
-    description = forms.CharField(
-        max_length=100, widget=forms.TextInput(attrs={"placeholder": "e.g. Framed beach print"})
+class OtherItemForm(forms.Form):
+    name = forms.CharField(
+        max_length=100,
+        widget=forms.TextInput(
+            attrs={"placeholder": "e.g. Framed beach print", "aria-label": "Item to add"}
+        ),
     )
 
 

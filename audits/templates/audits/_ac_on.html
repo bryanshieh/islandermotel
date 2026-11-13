@@ -1,0 +1,8 @@
+<div id="ac-on">
+  <button type="button" class="secondary" style="width:auto"
+          hx-post="{% url 'ac_on' audit.pk %}" hx-target="#ac-on" hx-swap="outerHTML">A/C on now</button>
+  {% if audit.ac_on_at %}<p>A/C on since <strong>{{ audit.ac_on_at|date:"g:i A" }}</strong>.</p>{% endif %}
+  <label>A/C switched on at
+    <input type="datetime-local" name="ac_on_time" value="{{ ac_on_value }}" aria-label="A/C switched on at">
+    <small>"A/C on now" saves the current time straight away. Edit the time here to correct it, then press Save.</small></label>
+</div>

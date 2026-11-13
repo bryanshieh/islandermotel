@@ -5,6 +5,7 @@ from .models import (
     Audit,
     BuildingElement,
     Finding,
+    FindingPhoto,
     Fixture,
     Furnishing,
     Issue,
@@ -57,7 +58,7 @@ class BuildingElementInline(admin.TabularInline):
 
 @admin.register(Room)
 class RoomAdmin(admin.ModelAdmin):
-    list_display = ["number", "room_type", "floor", "square_footage", "bed_configuration", "status", "is_storage"]
+    list_display = ["number", "room_type", "floor", "length_ft", "width_ft", "square_footage", "bed_configuration", "status", "is_storage"]
     list_filter = ["room_type", "floor", "status", "is_storage"]
     search_fields = ["number"]
     inlines = [FurnishingInline, FixtureInline, BuildingElementInline]
@@ -92,13 +93,19 @@ class BuildingElementAdmin(admin.ModelAdmin):
 
 @admin.register(Audit)
 class AuditAdmin(admin.ModelAdmin):
-    list_display = ["room", "cycle_year", "audit_type", "audit_date", "auditor", "overall_rating", "end_time"]
+    list_display = ["room", "cycle_year", "audit_type", "audit_date", "auditor", "ac_on_at", "end_time"]
     list_filter = ["cycle_year", "audit_type", "room__room_type"]
     search_fields = ["room__number"]
 
 
+class FindingPhotoInline(admin.TabularInline):
+    model = FindingPhoto
+    extra = 0
+
+
 @admin.register(Finding)
 class FindingAdmin(admin.ModelAdmin):
+    inlines = [FindingPhotoInline]
     list_display = ["audit", "target_label", "check_type", "result", "action_bucket", "measured_value"]
     list_filter = ["check_type", "result", "action_bucket", "audit__cycle_year"]
     search_fields = ["audit__room__number"]

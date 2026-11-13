@@ -8,10 +8,8 @@ from django.core.management import call_command
 from django.test import TestCase
 from django.utils import timezone
 
-from audits.ac import set_reading
+from audits.ac import set_outflow
 from audits.models import (
-    AC_END_LABEL,
-    AC_START_LABEL,
     Audit,
     CheckType,
     Finding,
@@ -51,12 +49,14 @@ class OutputTestCase(TestCase):
         # 2025: one older issue in room 7
         problem("7", 2025, "fix_now")
 
-        # A/C: 101 passes, 7 fails, 9 has only a first reading
-        for number, end_value in (("101", "55"), ("7", "62")):
+        # A/C: 101 and 7 have full readings, 9 only has the A/C-on time
+        for number, outflow in (("101", "55"), ("7", "62")):
             audit = Audit.objects.get(room__number=number, cycle_year=2026)
-            set_reading(audit, AC_START_LABEL, Decimal("78"), T0)
-            set_reading(audit, AC_END_LABEL, Decimal(end_value), T0 + timedelta(minutes=9))
-        set_reading(Audit.objects.get(room__number="9", cycle_year=2026), AC_START_LABEL, Decimal("80"), T0)
+            audit.ambient_temperature_f = Decimal("88")
+            audit.ac_on_at = T0
+            audit.save()
+            set_outflow(audit, Decimal(outflow), T0 + timedelta(minutes=9))
+        Audit.objects.filter(room__number="9", cycle_year=2026).update(ac_on_at=T0)
 
     def setUp(self):
         self.client.force_login(self.user)
@@ -161,18 +161,23 @@ class DashboardTests(OutputTestCase):
         self.assertEqual(context["issue_total"], 1)
         self.assertEqual([row["room"].number for row in context["ac_rows"]], ["7"])
 
-    def test_ac_results_per_room(self):
-        context = self.client.get("/dashboard/").context
+    def test_ac_readings_per_room_without_pass_or_fail(self):
+        response = self.client.get("/dashboard/")
+        context = response.context
         rows = {row["room"].number: row["ac"] for row in context["ac_rows"]}
         self.assertEqual(list(rows), ["7", "9", "101"])
+        ac = rows["101"]
         self.assertEqual(
-            (rows["101"].start_value, rows["101"].end_value, rows["101"].elapsed_minutes, rows["101"].drop),
-            (Decimal("78.0"), Decimal("55.0"), 9.0, Decimal("23.0")),
+            (ac.outside, ac.outflow, ac.difference, ac.minutes_running),
+            (Decimal("88.0"), Decimal("55.0"), Decimal("33.0"), 9.0),
         )
-        self.assertEqual({n: r.status for n, r in rows.items()}, {"101": "pass", "7": "fail", "9": "incomplete"})
-        self.assertEqual(
-            (context["ac_pass"], context["ac_fail"], context["ac_incomplete"]), (1, 1, 1)
-        )
+        self.assertEqual(rows["7"].difference, Decimal("26.0"))
+        self.assertIsNone(rows["9"].difference)
+        self.assertIsNone(rows["9"].minutes_running)
+        body = response.content.decode().split("<main", 1)[1]
+        for word in ("Pass", "Fail", "Passed", "Failed"):
+            self.assertNotIn(word, body)
+        self.assertNotIn("ac_pass", context)
 
     def test_storage_is_excluded(self):
         storage = Room.objects.get(is_storage=True)

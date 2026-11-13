@@ -1,0 +1,103 @@
+{% url 'item_update' audit.pk as update_url %}
+<div class="item" id="{{ entry.dom_id }}">
+  <h4>{{ entry.label }}{% if entry.absent %} <span class="tag unanswered">Expected, not in inventory</span>{% endif %}</h4>
+  {% if entry.note %}<div class="item-note">{{ entry.note }}</div>{% endif %}
+  {% if entry.is_floor %}{% include "audits/_material.html" with item=entry.item %}{% endif %}
+
+  {% for row in entry.visible_checks %}
+    <div class="check" {% if not row.result %}data-unanswered{% endif %}>
+      <span class="check-label">{{ row.label }}</span>
+      {% if not row.result %}<span class="tag unanswered">Unanswered</span>{% endif %}
+      <div class="btn-row">
+        {% for value, label, css in row.buttons %}
+          <button type="button"
+                  class="{{ css }} {% if row.result == value %}selected{% else %}outline secondary{% endif %}"
+                  hx-post="{{ update_url }}"
+                  hx-vals='{"item": "{{ entry.key }}", "key": "{{ row.key }}", "result": "{{ value }}"}'
+                  hx-include="#note-{{ entry.key }}"
+                  hx-target="#{{ entry.dom_id }}" hx-swap="outerHTML">{{ label }}</button>
+        {% endfor %}
+        {% if row.result %}
+          <button type="button" class="outline contrast clear"
+                  hx-post="{{ update_url }}"
+                  hx-vals='{"item": "{{ entry.key }}", "key": "{{ row.key }}", "result": ""}'
+                  hx-include="#note-{{ entry.key }}"
+                  hx-target="#{{ entry.dom_id }}" hx-swap="outerHTML">Clear</button>
+        {% endif %}
+      </div>
+      {% if row.result == "other" %}
+        <input type="text" name="result_other" maxlength="200" value="{{ row.finding.result_other }}"
+               placeholder="Describe what you found" aria-label="Other result"
+               hx-post="{{ update_url }}" hx-trigger="change, keyup changed delay:800ms" hx-swap="none"
+               hx-vals='{"item": "{{ entry.key }}", "key": "{{ row.key }}"}'
+               hx-on::after-request="this.nextElementSibling.textContent = event.detail.successful ? 'Saved' : 'Not saved, try again'">
+        <span class="saved-note"></span>
+      {% endif %}
+    </div>
+  {% endfor %}
+
+  {% if entry.answered %}
+    {# One action and note for the whole item, and any number of photos. #}
+    {% if entry.problems %}
+      <div class="details-box">
+        <span class="check-label">Action</span>
+        {% if not entry.action %}<span class="tag unanswered">Pick an action</span>{% endif %}
+        <div class="btn-row">
+          {% for value, label in buckets %}
+            <button type="button"
+                    class="bucket {% if entry.action == value %}selected{% else %}outline secondary{% endif %}"
+                    hx-post="{{ update_url }}"
+                    hx-vals='{"item": "{{ entry.key }}", "action_bucket": "{{ value }}"}'
+                    hx-include="#note-{{ entry.key }}"
+                    hx-target="#{{ entry.dom_id }}" hx-swap="outerHTML">{{ label }}</button>
+          {% endfor %}
+        </div>
+      </div>
+    {% endif %}
+
+    <input type="text" id="note-{{ entry.key }}" name="notes" value="{{ entry.notes }}"
+           placeholder="Note (optional)" aria-label="Note"
+           hx-post="{{ update_url }}" hx-trigger="change, keyup changed delay:800ms" hx-swap="none"
+           hx-vals='{"item": "{{ entry.key }}"}'
+           hx-on::after-request="this.nextElementSibling.textContent = event.detail.successful ? 'Saved' : 'Not saved, try again'">
+    <span class="saved-note"></span>
+
+    {% if entry.counts_pillows and not entry.not_applicable %}
+      <label style="margin-top:.5rem">Pillows to replace
+        <input type="number" name="pillows" min="0" max="4" step="1" inputmode="numeric"
+               value="{{ entry.pillows }}" style="max-width:8rem;margin-bottom:.25rem"
+               hx-post="{{ update_url }}" hx-trigger="change, keyup changed delay:800ms" hx-swap="none"
+               hx-vals='{"item": "{{ entry.key }}"}'
+               hx-on::after-request="this.nextElementSibling.textContent = event.detail.successful ? 'Saved' : 'Not saved: enter a number from 0 to 4'">
+        <span class="saved-note"></span>
+      </label>
+    {% endif %}
+
+    <details class="details-box" {% if entry.photos or photo_error %}open{% endif %}>
+      <summary>Photos (optional){% if entry.photos %} · {{ entry.photos|length }}{% endif %}</summary>
+      {% if photo_error %}<p><span class="tag fail">{{ photo_error }}</span></p>{% endif %}
+      {% for photo in entry.photos %}
+        <p>
+          <a href="{{ photo.photo.url }}" target="_blank"><img class="thumb" src="{{ photo.photo.url }}" alt="Photo of {{ entry.label }}"></a>
+          <button type="button" class="outline secondary" style="width:auto;margin-left:.5rem"
+                  hx-post="{{ update_url }}"
+                  hx-vals='{"item": "{{ entry.key }}", "remove_photo": "{{ photo.pk }}"}'
+                  hx-target="#{{ entry.dom_id }}" hx-swap="outerHTML">Remove photo</button>
+        </p>
+      {% endfor %}
+      <form hx-post="{{ update_url }}" hx-encoding="multipart/form-data" hx-trigger="change"
+            hx-target="#{{ entry.dom_id }}" hx-swap="outerHTML">
+        <input type="hidden" name="item" value="{{ entry.key }}">
+        <label>{% if entry.photos %}Add another photo{% else %}Add a photo{% endif %}
+          <input type="file" name="photo" accept="image/*" multiple aria-label="Add a photo"></label>
+      </form>
+    </details>
+  {% endif %}
+
+  {% if entry.can_delete %}
+    <button type="button" class="outline secondary" style="width:auto;margin:.5rem 0 0"
+            hx-post="{% url 'delete_other_item' audit.pk entry.item.pk %}"
+            hx-confirm="Delete '{{ entry.label }}' and its answers in this audit?"
+            hx-target="#zone-items" hx-swap="outerHTML">Delete this item</button>
+  {% endif %}
+</div>
